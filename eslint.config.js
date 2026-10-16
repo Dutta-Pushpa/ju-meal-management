@@ -56,9 +56,9 @@ export default tseslint.config(
   },
 
   {
-    // Migrations and seeds run as one-shot scripts. A hard exit at the end of
-    // every file is noise there, and console output is the point.
-    files: ['db/**/*.ts'],
+    // Migrations, seeds, and test bootstrap run as one-shot scripts. A hard exit
+    // at the end of every file is noise there, and console output is the point.
+    files: ['db/**/*.ts', 'server/tests/global-setup.ts'],
     rules: { 'no-console': 'off' },
   },
 
