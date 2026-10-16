@@ -3,7 +3,7 @@ import request from 'supertest';
 import type { Logger } from '../src/utils/logger.js';
 import { createApp } from '../src/app.js';
 import type { AppConfig } from '../src/config/env.js';
-import type { Queryable } from '../src/db/pool.js';
+import type { Database } from '../src/db/pool.js';
 
 /**
  * Phase 1 infrastructure tests: the health endpoint, the error envelope, and
@@ -17,6 +17,7 @@ const testConfig: AppConfig = {
   NODE_ENV: 'test',
   PORT: 4000,
   DATABASE_URL: 'postgresql://user:pass@localhost:5432/ju_meal_test',
+  DATABASE_ADMIN_URL: undefined,
   DB_POOL_MAX: 2,
   DB_POOL_IDLE_TIMEOUT_MS: 30_000,
   DB_CONNECTION_TIMEOUT_MS: 5_000,
@@ -28,7 +29,7 @@ const testConfig: AppConfig = {
   ORDER_CUTOFF_TIME: '12:00',
   BUDGET_ROLLOVER: false,
   DEFAULT_WEEKLY_BUDGET_PAISA: 70_000,
-  CORS_ORIGIN: 'http://localhost:5173',
+  CORS_ORIGIN: ['http://localhost:5173'],
   TRUST_PROXY: false,
   RATE_LIMIT_WINDOW_MINUTES: 15,
   RATE_LIMIT_MAX_REQUESTS: 300,
@@ -47,13 +48,17 @@ const silentLogger = {
   silent: vi.fn(),
 } as unknown as Logger;
 
-function appWith(db: Queryable | null) {
+function appWith(db: Database | null) {
   return createApp({ config: testConfig, logger: silentLogger, db });
 }
 
 /**
  * A stub database plus the underlying mock, so a test can assert on calls
  * without binding `query` out of its object.
+ *
+ * connect and end are present because the application asks for a Database:
+ * serving an authenticated endpoint needs the pool interface, even though these
+ * tests never reach one.
  */
 function stubDb(behaviour: 'ok' | 'fail') {
   const query = vi.fn(() =>
@@ -62,7 +67,14 @@ function stubDb(behaviour: 'ok' | 'fail') {
       : Promise.reject(new Error('connection refused: host=localhost user=ju_meal')),
   );
 
-  return { db: { query } as unknown as Queryable, query };
+  return {
+    db: {
+      query,
+      connect: vi.fn(),
+      end: vi.fn(),
+    } as unknown as Database,
+    query,
+  };
 }
 
 describe('GET /health', () => {
@@ -96,7 +108,7 @@ describe('GET /health', () => {
   it('never leaks the connection string or the database error text', async () => {
     const secret = 'postgresql://ju_meal:super-secret-password@db.internal:5432/prod';
     const query = vi.fn(() => Promise.reject(new Error(`could not connect using ${secret}`)));
-    const db = { query } as unknown as Queryable;
+    const db = { query, connect: vi.fn(), end: vi.fn() } as unknown as Database;
 
     const res = await request(appWith(db)).get('/health');
     const body = JSON.stringify(res.body);

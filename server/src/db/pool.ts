@@ -13,7 +13,10 @@ import type { Logger } from '../utils/logger.js';
  * allowed to assume.
  */
 export interface Queryable {
-  query<R extends Record<string, unknown> = Record<string, unknown>>(
+  // No `extends Record<string, unknown>` constraint on R: an interface such as
+  // UserRow does not have an index signature and would not satisfy it, even
+  // though it is exactly the row shape wanted here.
+  query<R = Record<string, unknown>>(
     text: string,
     values?: readonly unknown[],
   ): Promise<{ rows: R[]; rowCount: number | null }>;

@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import type { ApiErrorResponse } from '@ju/shared';
-import { ZodError } from 'zod';
 import { isAppError } from '../utils/errors.js';
+import { ValidationError } from '../utils/validation.js';
 import type { Logger } from '../utils/logger.js';
 
 /** PostgreSQL error codes we can translate into a meaningful response. */
@@ -35,18 +35,18 @@ function isPgError(error: unknown): error is PgError {
 }
 
 /**
- * Convert a Zod failure into the field-level detail list the API contract
- * specifies. Only the path and the issue code are forwarded; the Zod message is
- * dropped so internal schema wording never reaches a client.
+ * Translate a validation failure into the field-level detail list the API
+ * contract specifies. The field and the issue code are forwarded; the internal
+ * message is dropped so wording meant for developers never reaches a client.
  */
-function fromZodError(error: ZodError): ApiErrorResponse {
+function fromValidationError(error: ValidationError): ApiErrorResponse {
   return {
     error: {
       code: 'VALIDATION_ERROR',
       message: 'The request failed validation.',
       details: error.issues.map((issue) => ({
-        field: issue.path.join('.') || '(body)',
-        issue: issue.code,
+        field: issue.field,
+        issue: issue.issue,
       })),
     },
   };
@@ -94,9 +94,9 @@ export function errorHandler(logger: Logger) {
       return;
     }
 
-    if (err instanceof ZodError) {
+    if (err instanceof ValidationError) {
       logger.warn({ ...logContext, issues: err.issues.length }, 'request failed validation');
-      res.status(400).json(fromZodError(err));
+      res.status(400).json(fromValidationError(err));
       return;
     }
 

@@ -70,7 +70,7 @@ and track collection and delivery.
 | Database     | PostgreSQL 16, run with Docker Compose             |
 | Data access  | `node-postgres` with hand-written SQL              |
 | Migrations   | Custom runner over `node-postgres`                 |
-| Validation   | Zod                                                |
+| Validation   | Hand-written, `server/src/utils/validation.ts`     |
 | Auth         | JWT (HS256) Bearer tokens, bcrypt password hashing |
 | Tests        | Vitest, Supertest                                  |
 | API testing  | Postman collection with Newman                     |
@@ -118,7 +118,7 @@ server/              Backend — Express, TypeScript
     models/          SQL and persistence
     views/           JSON response presenters
 client/              Frontend — React, Vite, TypeScript
-shared/              Types and Zod schemas used by both
+shared/              Types used by both
 db/
   migrations/        numbered SQL migrations
   seeds/             fictional seed data

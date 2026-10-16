@@ -6,22 +6,22 @@ Stack, structure, conventions, and the reasoning behind them.
 
 ## Stack
 
-| Layer        | Choice                                | Why                                                      |
-| ------------ | ------------------------------------- | -------------------------------------------------------- |
-| Language     | TypeScript (strict)                   | Type safety across the API and the future frontend       |
-| Runtime      | Node.js 22 LTS                        | Long-term support, mature ecosystem                      |
-| Framework    | Express 5                             | Small, well understood, minimal abstraction              |
-| Data access  | `node-postgres` with hand-written SQL | Explicit SQL, no ORM magic, full control of locking      |
-| Migrations   | Custom runner over `node-postgres`    | Needed because there is no ORM; small and auditable      |
-| Database     | PostgreSQL 16 (Docker Compose)        | Transactions, constraints, and row locking are required  |
-| Validation   | Zod                                   | Shared between request parsing and test fixtures         |
-| Passwords    | bcrypt                                | Mature, widely deployed, and a deliberate project choice |
-| Auth         | JWT (HS256), Bearer token             | Required by the Postman/Newman workflow                  |
-| Tests        | Vitest + Supertest                    | Fast, TypeScript-native, real HTTP simulation            |
-| API testing  | Postman + Newman                      | Collection runs identically locally and in CI            |
-| Load testing | Apache JMeter                         | Produces `.jtl` output and an HTML report                |
-| CI           | GitHub Actions                        | Migrations, Vitest, and Newman on every push             |
-| Frontend     | React + Vite + TypeScript             | Deferred until the API is stable                         |
+| Layer        | Choice                                  | Why                                                      |
+| ------------ | --------------------------------------- | -------------------------------------------------------- |
+| Language     | TypeScript (strict)                     | Type safety across the API and the future frontend       |
+| Runtime      | Node.js 22 LTS                          | Long-term support, mature ecosystem                      |
+| Framework    | Express 5                               | Small, well understood, minimal abstraction              |
+| Data access  | `node-postgres` with hand-written SQL   | Explicit SQL, no ORM magic, full control of locking      |
+| Migrations   | Custom runner over `node-postgres`      | Needed because there is no ORM; small and auditable      |
+| Database     | PostgreSQL 16 (Docker Compose)          | Transactions, constraints, and row locking are required  |
+| Validation   | Hand-written, `src/utils/validation.ts` | No schema library; covers only what this API has         |
+| Passwords    | bcrypt                                  | Mature, widely deployed, and a deliberate project choice |
+| Auth         | JWT (HS256), Bearer token               | Required by the Postman/Newman workflow                  |
+| Tests        | Vitest + Supertest                      | Fast, TypeScript-native, real HTTP simulation            |
+| API testing  | Postman + Newman                        | Collection runs identically locally and in CI            |
+| Load testing | Apache JMeter                           | Produces `.jtl` output and an HTML report                |
+| CI           | GitHub Actions                          | Migrations, Vitest, and Newman on every push             |
+| Frontend     | React + Vite + TypeScript               | Deferred until the API is stable                         |
 
 ## Structure
 
@@ -38,7 +38,7 @@ Stack, structure, conventions, and the reasoning behind them.
 │     ├─ utils/
 │     └─ server.ts
 ├─ client/                  Frontend (React)
-├─ shared/                  Types and Zod schemas used by both
+├─ shared/                  Types used by both applications
 ├─ db/
 │  ├─ migrations/*.sql
 │  ├─ seeds/*.sql
@@ -158,7 +158,7 @@ Migrating to an HTTP-only cookie is documented in
 [policies.md](policies.md#open-questions-for-the-department) as a hardening
 option for once the frontend exists.
 
-Other controls: parameterised SQL everywhere; strict Zod validation on every
+Other controls: parameterised SQL everywhere; strict validation of every
 body, query, and path parameter; login rate limiting; and an error envelope that
 never leaks stack traces, SQL, or database messages.
 

@@ -3,7 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import type { AppConfig } from './config/env.js';
-import type { Queryable } from './db/pool.js';
+import type { Database } from './db/pool.js';
 import { errorHandler } from './middleware/error-handler.js';
 import { routeNotFound } from './middleware/not-found.js';
 import { requestContext } from './middleware/request-context.js';
@@ -14,8 +14,12 @@ import type { Logger } from './utils/logger.js';
 export interface AppDeps {
   config: AppConfig;
   logger: Logger;
-  /** `null` only in tests that deliberately exercise an unconfigured database. */
-  db: Queryable | null;
+  /**
+   * `null` only in tests that deliberately exercise an unconfigured database.
+   * Typed as Database rather than Queryable because serving any authenticated
+   * endpoint needs connection pooling and shutdown.
+   */
+  db: Database | null;
 }
 
 /**
@@ -52,9 +56,9 @@ export function createApp(deps: AppDeps): Express {
 
   app.use(
     cors({
-      origin: config.CORS_ORIGIN.split(',')
-        .map((origin) => origin.trim())
-        .filter((origin) => origin.length > 0),
+      // Configuration validation already splits and trims this list, so the
+      // value arriving here is a clean array of origins.
+      origin: config.CORS_ORIGIN,
       credentials: true,
       methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id'],

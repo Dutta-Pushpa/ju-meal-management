@@ -62,19 +62,22 @@ export async function closePool(): Promise<void> {
   pool = undefined;
 }
 
-export async function query<T extends Record<string, unknown>>(
+export async function query<R = Record<string, unknown>>(
   text: string,
   values: readonly unknown[] = [],
-): Promise<T[]> {
-  const result = await getPool().query<T>(text, values as unknown[]);
-  return result.rows;
+): Promise<R[]> {
+  // The result is cast rather than R being passed into pg's generic, because
+  // pg constrains its row type to Record<string, any> while a declared row
+  // interface such as UserRow has no index signature and cannot satisfy that.
+  const result = await getPool().query(text, values as unknown[]);
+  return result.rows as R[];
 }
 
-export async function queryOne<T extends Record<string, unknown>>(
+export async function queryOne<R = Record<string, unknown>>(
   text: string,
   values: readonly unknown[] = [],
-): Promise<T | undefined> {
-  const rows = await query<T>(text, values);
+): Promise<R | undefined> {
+  const rows = await query<R>(text, values);
   return rows[0];
 }
 
