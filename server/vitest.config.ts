@@ -6,6 +6,9 @@ export default defineConfig({
     environment: 'node',
     globals: false,
     include: ['tests/**/*.test.ts'],
+    // The test database is migrated before any suite runs, so a new checkout
+    // needs nothing more than a created database and npm test.
+    globalSetup: ['tests/global-setup.ts'],
     setupFiles: ['tests/setup.ts'],
     // Integration tests share one PostgreSQL instance. Running files in
     // parallel would make their transactions and truncations collide.
