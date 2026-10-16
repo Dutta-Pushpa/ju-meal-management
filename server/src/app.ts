@@ -93,7 +93,16 @@ export function createApp(deps: AppDeps): Express {
   // and load balancers can probe it without depending on the API version.
   app.get('/health', healthHandler({ ...deps, db: deps.db }));
 
-  app.use('/api', createApiRouter());
+  // Self-registration is a convenience for local development and for the Postman
+  // collection. In production every account must be created by an administrator,
+  // so an open endpoint would let anyone mint a TEACHER account.
+  const allowSelfRegistration = config.NODE_ENV !== 'production';
+
+  // Without a database there are no endpoints to serve. Health still answers and
+  // reports the reason, and every other path falls through to the 404 handler.
+  if (deps.db !== null) {
+    app.use('/api', createApiRouter({ db: deps.db, config, allowSelfRegistration }));
+  }
 
   app.use(routeNotFound());
   app.use(errorHandler(logger));
