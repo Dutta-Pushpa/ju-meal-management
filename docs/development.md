@@ -25,30 +25,30 @@ npm run dev:server           # API on http://localhost:4000
 
 ## Commands
 
-| Command | Description |
-| --- | --- |
-| `npm run dev:server` | Start the API in watch mode |
-| `npm run dev:client` | Start the frontend |
-| `npm run db:migrate` | Apply pending migrations |
-| `npm run db:migrate:status` | Show applied and pending migrations |
-| `npm run db:seed` | Reset and reload fictional demo data |
-| `npm test` | Unit and integration tests |
-| `npm run test:watch` | Same, in watch mode |
-| `npm run test:api` | Postman collection via Newman |
-| `npm run test:load` | JMeter load test |
-| `npm run lint` | Lint the workspace |
-| `npm run typecheck` | Type-check in strict mode |
-| `npm run format` | Format the codebase |
+| Command                     | Description                          |
+| --------------------------- | ------------------------------------ |
+| `npm run dev:server`        | Start the API in watch mode          |
+| `npm run dev:client`        | Start the frontend                   |
+| `npm run db:migrate`        | Apply pending migrations             |
+| `npm run db:migrate:status` | Show applied and pending migrations  |
+| `npm run db:seed`           | Reset and reload fictional demo data |
+| `npm test`                  | Unit and integration tests           |
+| `npm run test:watch`        | Same, in watch mode                  |
+| `npm run test:api`          | Postman collection via Newman        |
+| `npm run test:load`         | JMeter load test                     |
+| `npm run lint`              | Lint the workspace                   |
+| `npm run typecheck`         | Type-check in strict mode            |
+| `npm run format`            | Format the codebase                  |
 
 ## Testing layers
 
-| Layer | Tool | Runs against |
-| --- | --- | --- |
-| Unit | Vitest | Pure functions: money, status transitions, cutoff logic, aggregation. No database |
-| Integration | Vitest + Supertest | Full HTTP request down to a real PostgreSQL instance |
-| API | Postman + Newman | End-to-end regression including negative and authorisation cases |
-| Load | JMeter | Throughput and latency under concurrent activity |
-| E2E | Deferred | Browser-level teacher and staff journeys |
+| Layer       | Tool               | Runs against                                                                      |
+| ----------- | ------------------ | --------------------------------------------------------------------------------- |
+| Unit        | Vitest             | Pure functions: money, status transitions, cutoff logic, aggregation. No database |
+| Integration | Vitest + Supertest | Full HTTP request down to a real PostgreSQL instance                              |
+| API         | Postman + Newman   | End-to-end regression including negative and authorisation cases                  |
+| Load        | JMeter             | Throughput and latency under concurrent activity                                  |
+| E2E         | Deferred           | Browser-level teacher and staff journeys                                          |
 
 Integration tests use a **real database**, never a mock. The rules under test are
 transaction and constraint behaviour, which a fake cannot verify.
@@ -60,19 +60,19 @@ database whose name does not end in `_test`.
 
 ## What is covered
 
-| Area | Cases |
-| --- | --- |
-| Auth | Login success and failure, bcrypt storage and cost upgrade on login, 72-byte input rejection, duplicate email, registration validation, rate limiting, no user enumeration |
-| Authorisation | Missing, malformed, and expired tokens; `tokenVersion` revocation; teacher refused on staff endpoints; staff refused without the required permission |
-| Ordering | Server-calculated totals, client total ignored, atomic order + items + ledger debit, insufficient balance with no partial writes, invalid quantity, unavailable item, mixed locations |
-| Cutoff | One second before, exactly at, and after the cutoff, plus the `Asia/Dhaka` boundary and disabled dates |
-| Idempotency | Repeated `idempotencyKey` creates no duplicate order or debit |
-| Concurrency | Simultaneous orders cannot exceed a balance |
-| Snapshots | A later menu price change does not alter a historical order |
-| Cancellation | Before-cutoff cancel with refund, refusal after cutoff, cross-teacher refusal, staff override is audited, cancelled order retained |
-| Staff ops | Grouping by location, item quantity sums, location and daily totals, valid and invalid status transitions |
-| Budget | Ledger-derived balances, duplicate allocation rejected, adjustments require a reason |
-| Data | Migrations apply to an empty database, re-runs are a no-op, edited migrations are detected, seed is repeatable, locations are soft deleted |
+| Area          | Cases                                                                                                                                                                                 |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Auth          | Login success and failure, bcrypt storage and cost upgrade on login, 72-byte input rejection, duplicate email, registration validation, rate limiting, no user enumeration            |
+| Authorisation | Missing, malformed, and expired tokens; `tokenVersion` revocation; teacher refused on staff endpoints; staff refused without the required permission                                  |
+| Ordering      | Server-calculated totals, client total ignored, atomic order + items + ledger debit, insufficient balance with no partial writes, invalid quantity, unavailable item, mixed locations |
+| Cutoff        | One second before, exactly at, and after the cutoff, plus the `Asia/Dhaka` boundary and disabled dates                                                                                |
+| Idempotency   | Repeated `idempotencyKey` creates no duplicate order or debit                                                                                                                         |
+| Concurrency   | Simultaneous orders cannot exceed a balance                                                                                                                                           |
+| Snapshots     | A later menu price change does not alter a historical order                                                                                                                           |
+| Cancellation  | Before-cutoff cancel with refund, refusal after cutoff, cross-teacher refusal, staff override is audited, cancelled order retained                                                    |
+| Staff ops     | Grouping by location, item quantity sums, location and daily totals, valid and invalid status transitions                                                                             |
+| Budget        | Ledger-derived balances, duplicate allocation rejected, adjustments require a reason                                                                                                  |
+| Data          | Migrations apply to an empty database, re-runs are a no-op, edited migrations are detected, seed is repeatable, locations are soft deleted                                            |
 
 ## Postman collection
 
@@ -87,11 +87,11 @@ Login captures its token into an environment variable so later requests
 authenticate themselves:
 
 ```javascript
-pm.test("login returns an access token", function () {
+pm.test('login returns an access token', function () {
   pm.response.to.have.status(200);
   const body = pm.response.json();
-  pm.expect(body.data.accessToken).to.be.a("string").and.not.empty;
-  pm.environment.set("accessToken", body.data.accessToken);
+  pm.expect(body.data.accessToken).to.be.a('string').and.not.empty;
+  pm.environment.set('accessToken', body.data.accessToken);
 });
 ```
 
@@ -123,11 +123,11 @@ Any failing step fails the pipeline.
 
 JMeter plan at `tests/load/meal-ordering.jmx`, with three thread groups:
 
-| Group | Simulates | Threads | Ramp-up |
-| --- | --- | --- | --- |
-| TG1 | Teachers browsing menus | 25 | 60 s |
-| TG2 | Teachers checking out near the cutoff | 50 | 30 s |
-| TG3 | Staff refreshing the daily dashboard | 5 | 10 s |
+| Group | Simulates                             | Threads | Ramp-up |
+| ----- | ------------------------------------- | ------- | ------- |
+| TG1   | Teachers browsing menus               | 25      | 60 s    |
+| TG2   | Teachers checking out near the cutoff | 50      | 30 s    |
+| TG3   | Staff refreshing the daily dashboard  | 5       | 10 s    |
 
 ```bash
 docker compose up -d db && npm run db:migrate && npm run db:seed && npm run dev:server
@@ -145,18 +145,18 @@ failure.
 
 ## Roadmap
 
-| Phase | Scope | Status |
-| --- | --- | --- |
-| 1 | Scaffold, TypeScript, lint, Docker Compose | Planned |
-| 2 | Schema, migration runner, seed | Planned |
-| 3 | Authentication and authorisation | Planned |
-| 4 | MVC skeleton and locations CRUD | Planned |
-| 5 | Menus, budgets, teacher ordering | Planned |
-| 6 | Staff operations and reporting | Planned |
-| 7 | Postman collection and Newman | Planned |
-| 8 | CI integration | Planned |
-| 9 | Load testing | Planned |
-| 10 | Frontend | Not started |
-| 11 | Deployment | Not started |
+| Phase | Scope                                      | Status      |
+| ----- | ------------------------------------------ | ----------- |
+| 1     | Scaffold, TypeScript, lint, Docker Compose | Planned     |
+| 2     | Schema, migration runner, seed             | Planned     |
+| 3     | Authentication and authorisation           | Planned     |
+| 4     | MVC skeleton and locations CRUD            | Planned     |
+| 5     | Menus, budgets, teacher ordering           | Planned     |
+| 6     | Staff operations and reporting             | Planned     |
+| 7     | Postman collection and Newman              | Planned     |
+| 8     | CI integration                             | Planned     |
+| 9     | Load testing                               | Planned     |
+| 10    | Frontend                                   | Not started |
+| 11    | Deployment                                 | Not started |
 
 A phase is `Verified` only once it is implemented **and** its tests pass.

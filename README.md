@@ -12,6 +12,12 @@ and track collection and delivery.
 > **সংক্ষিপ্ত:** জাহান্গিরনগর বিশ্ববিদ্যালয়ের সিএসই বিভাগের শিক্ষকদের জন্য খাবার
 > অর্ডার ও সংগ্রহ ব্যবস্থাপনার ওয়েব সিস্টেম।
 
+> **Status: under active development.** The API scaffold, configuration
+> validation, logging, and `GET /health` are in place. The database, migrations,
+> seed script, authentication, and frontend are not implemented yet, so
+> `npm run db:migrate` and `npm run db:seed` do not exist. The stack and features
+> below describe the intended system.
+
 > ### Data notice
 >
 > **All data in this repository is fictional demonstration data.** Restaurant
@@ -57,20 +63,20 @@ and track collection and delivery.
 
 ## Tech stack
 
-| Layer | Choice |
-| --- | --- |
-| Language | TypeScript (strict) |
-| Backend | Node.js 22 LTS, Express 5 |
-| Database | PostgreSQL 16, run with Docker Compose |
-| Data access | `node-postgres` with hand-written SQL |
-| Migrations | Custom runner over `node-postgres` |
-| Validation | Zod |
-| Auth | JWT (HS256) Bearer tokens, bcrypt password hashing |
-| Tests | Vitest, Supertest |
-| API testing | Postman collection with Newman |
-| Load testing | Apache JMeter |
-| CI | GitHub Actions |
-| Frontend | React, Vite, TypeScript |
+| Layer        | Choice                                             |
+| ------------ | -------------------------------------------------- |
+| Language     | TypeScript (strict)                                |
+| Backend      | Node.js 22 LTS, Express 5                          |
+| Database     | PostgreSQL 16, run with Docker Compose             |
+| Data access  | `node-postgres` with hand-written SQL              |
+| Migrations   | Custom runner over `node-postgres`                 |
+| Validation   | Zod                                                |
+| Auth         | JWT (HS256) Bearer tokens, bcrypt password hashing |
+| Tests        | Vitest, Supertest                                  |
+| API testing  | Postman collection with Newman                     |
+| Load testing | Apache JMeter                                      |
+| CI           | GitHub Actions                                     |
+| Frontend     | React, Vite, TypeScript                            |
 
 ## Quick start
 
@@ -94,11 +100,11 @@ npm run dev:server           # API on http://localhost:4000
 Created by `npm run db:seed`. **Fictional accounts with placeholder passwords —
 change or delete them before any deployment.**
 
-| Role | Email | Password | Can do |
-| --- | --- | --- | --- |
-| Teacher | `teacher@example.edu` | `TeacherPass123!` | Order meals, view own budget and history |
-| Staff | `staff@example.edu` | `StaffPass123!` | View all orders, track collection and delivery |
-| Admin | `admin@example.edu` | `AdminPass123!` | Everything, including users, budgets, menus |
+| Role    | Email                 | Password          | Can do                                         |
+| ------- | --------------------- | ----------------- | ---------------------------------------------- |
+| Teacher | `teacher@example.edu` | `TeacherPass123!` | Order meals, view own budget and history       |
+| Staff   | `staff@example.edu`   | `StaffPass123!`   | View all orders, track collection and delivery |
+| Admin   | `admin@example.edu`   | `AdminPass123!`   | Everything, including users, budgets, menus    |
 
 ## Project structure
 
@@ -126,13 +132,13 @@ docker-compose.yml   PostgreSQL service
 
 ## Documentation
 
-| Document | Contents |
-| --- | --- |
-| [architecture.md](docs/architecture.md) | Stack, project structure, layer design, conventions, security decisions |
-| [database.md](docs/database.md) | Schema reference, ER diagram, transaction boundaries, migrations |
-| [api.md](docs/api.md) | Endpoint contract, error format, sample requests and responses |
-| [policies.md](docs/policies.md) | Business rules, assumptions, and open questions for the department |
-| [development.md](docs/development.md) | Setup, commands, testing strategy, Postman, Newman, CI, load testing, roadmap |
+| Document                                | Contents                                                                      |
+| --------------------------------------- | ----------------------------------------------------------------------------- |
+| [architecture.md](docs/architecture.md) | Stack, project structure, layer design, conventions, security decisions       |
+| [database.md](docs/database.md)         | Schema reference, ER diagram, transaction boundaries, migrations              |
+| [api.md](docs/api.md)                   | Endpoint contract, error format, sample requests and responses                |
+| [policies.md](docs/policies.md)         | Business rules, assumptions, and open questions for the department            |
+| [development.md](docs/development.md)   | Setup, commands, testing strategy, Postman, Newman, CI, load testing, roadmap |
 
 **To make a decision about how the system behaves, [docs/policies.md](docs/policies.md)
 is the only document that needs department input.** The rest is implementation

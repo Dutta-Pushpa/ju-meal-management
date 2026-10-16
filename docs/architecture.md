@@ -6,22 +6,22 @@ Stack, structure, conventions, and the reasoning behind them.
 
 ## Stack
 
-| Layer | Choice | Why |
-| --- | --- | --- |
-| Language | TypeScript (strict) | Type safety across the API and the future frontend |
-| Runtime | Node.js 22 LTS | Long-term support, mature ecosystem |
-| Framework | Express 5 | Small, well understood, minimal abstraction |
-| Data access | `node-postgres` with hand-written SQL | Explicit SQL, no ORM magic, full control of locking |
-| Migrations | Custom runner over `node-postgres` | Needed because there is no ORM; small and auditable |
-| Database | PostgreSQL 16 (Docker Compose) | Transactions, constraints, and row locking are required |
-| Validation | Zod | Shared between request parsing and test fixtures |
-| Passwords | bcrypt | Mature, widely deployed, and a deliberate project choice |
-| Auth | JWT (HS256), Bearer token | Required by the Postman/Newman workflow |
-| Tests | Vitest + Supertest | Fast, TypeScript-native, real HTTP simulation |
-| API testing | Postman + Newman | Collection runs identically locally and in CI |
-| Load testing | Apache JMeter | Produces `.jtl` output and an HTML report |
-| CI | GitHub Actions | Migrations, Vitest, and Newman on every push |
-| Frontend | React + Vite + TypeScript | Deferred until the API is stable |
+| Layer        | Choice                                | Why                                                      |
+| ------------ | ------------------------------------- | -------------------------------------------------------- |
+| Language     | TypeScript (strict)                   | Type safety across the API and the future frontend       |
+| Runtime      | Node.js 22 LTS                        | Long-term support, mature ecosystem                      |
+| Framework    | Express 5                             | Small, well understood, minimal abstraction              |
+| Data access  | `node-postgres` with hand-written SQL | Explicit SQL, no ORM magic, full control of locking      |
+| Migrations   | Custom runner over `node-postgres`    | Needed because there is no ORM; small and auditable      |
+| Database     | PostgreSQL 16 (Docker Compose)        | Transactions, constraints, and row locking are required  |
+| Validation   | Zod                                   | Shared between request parsing and test fixtures         |
+| Passwords    | bcrypt                                | Mature, widely deployed, and a deliberate project choice |
+| Auth         | JWT (HS256), Bearer token             | Required by the Postman/Newman workflow                  |
+| Tests        | Vitest + Supertest                    | Fast, TypeScript-native, real HTTP simulation            |
+| API testing  | Postman + Newman                      | Collection runs identically locally and in CI            |
+| Load testing | Apache JMeter                         | Produces `.jtl` output and an HTML report                |
+| CI           | GitHub Actions                        | Migrations, Vitest, and Newman on every push             |
+| Frontend     | React + Vite + TypeScript             | Deferred until the API is stable                         |
 
 ## Structure
 
@@ -94,11 +94,11 @@ everything it needs.
 The project is MVC adapted to a JSON API, where there is no server-rendered
 template.
 
-| MVC | Location | Notes |
-| --- | --- | --- |
-| Model | `server/src/models/` | Entities, SQL, persistence |
-| View | `server/src/views/` | JSON presenters; the React app in `client/` becomes the user-facing view |
-| Controller | `server/src/controllers/` | HTTP request handling |
+| MVC        | Location                  | Notes                                                                    |
+| ---------- | ------------------------- | ------------------------------------------------------------------------ |
+| Model      | `server/src/models/`      | Entities, SQL, persistence                                               |
+| View       | `server/src/views/`       | JSON presenters; the React app in `client/` becomes the user-facing view |
+| Controller | `server/src/controllers/` | HTTP request handling                                                    |
 
 `services/` sits between Controller and Model. This is a deliberate addition.
 Putting the cutoff and budget rules in controllers would tie them to `req` and
@@ -171,8 +171,7 @@ Four rules follow from bcrypt's behaviour, and all four are covered by tests:
 
 - **The 72-byte limit is enforced, not ignored.** bcrypt silently truncates input
   beyond 72 bytes, so two passwords sharing a prefix would be interchangeable.
-  Registration therefore rejects any password whose **UTF-8 byte length** exceeds
-  72. The check is on bytes, not characters, so a short-looking Bengali or other
+  Registration therefore rejects any password whose **UTF-8 byte length** exceeds 72. The check is on bytes, not characters, so a short-looking Bengali or other
   multibyte password is not accepted by accident.
 - **Minimum length is 12 characters**, checked before hashing.
 - **A timing-safe comparison** is always used. The library handles this, but a
@@ -205,11 +204,11 @@ before any real deployment.
 The original requirements document is preserved in the repository history. These
 decisions differ from it, each deliberately.
 
-| Original | Decision | Reason |
-| --- | --- | --- |
-| Prisma ORM | Hand-written SQL with `node-postgres` | Explicit requirement; full control of locking |
-| HTTP-only cookie sessions | JWT in the JSON body | Required by the Postman/Newman workflow |
-| Two roles: `TEACHER`, `STAFF` | Three: `TEACHER`, `STAFF`, `ADMIN` | Separates budget and menu administration from collection |
-| One order per day | Multiple orders per day, one location each | Real need for breakfast and lunch |
-| Hard delete | Soft deactivation only | Historical financial records are never deleted |
-| MVC | MVC plus a service layer | Keeps business rules testable and independent of HTTP |
+| Original                      | Decision                                   | Reason                                                   |
+| ----------------------------- | ------------------------------------------ | -------------------------------------------------------- |
+| Prisma ORM                    | Hand-written SQL with `node-postgres`      | Explicit requirement; full control of locking            |
+| HTTP-only cookie sessions     | JWT in the JSON body                       | Required by the Postman/Newman workflow                  |
+| Two roles: `TEACHER`, `STAFF` | Three: `TEACHER`, `STAFF`, `ADMIN`         | Separates budget and menu administration from collection |
+| One order per day             | Multiple orders per day, one location each | Real need for breakfast and lunch                        |
+| Hard delete                   | Soft deactivation only                     | Historical financial records are never deleted           |
+| MVC                           | MVC plus a service layer                   | Keeps business rules testable and independent of HTTP    |

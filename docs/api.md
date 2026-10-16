@@ -26,10 +26,10 @@ endpoint.
 
 **Money** Every amount is returned as two fields:
 
-| Field | Type | Meaning |
-| --- | --- | --- |
-| `amountPaisa` | `integer` | The authoritative value. Use this for arithmetic |
-| `amountFormatted` | `string` | Display only, for example `৳150.00` |
+| Field             | Type      | Meaning                                          |
+| ----------------- | --------- | ------------------------------------------------ |
+| `amountPaisa`     | `integer` | The authoritative value. Use this for arithmetic |
+| `amountFormatted` | `string`  | Display only, for example `৳150.00`              |
 
 Clients must never compute money from `amountFormatted`.
 
@@ -45,7 +45,7 @@ Collection:
 
 ```json
 {
-  "data": [ { "id": 1 }, { "id": 2 } ],
+  "data": [{ "id": 1 }, { "id": 2 }],
   "meta": { "total": 2 }
 }
 ```
@@ -59,9 +59,7 @@ Every failure uses the same shape:
   "error": {
     "code": "BUDGET_INSUFFICIENT",
     "message": "Order total exceeds the available budget for this period.",
-    "details": [
-      { "field": "items", "issue": "required" }
-    ]
+    "details": [{ "field": "items", "issue": "required" }]
   }
 }
 ```
@@ -75,37 +73,37 @@ never included.
 
 ### Status codes
 
-| Code | Meaning |
-| --- | --- |
-| `200` | Successful read or update |
-| `201` | Resource created |
-| `400` | Malformed request or failed validation |
-| `401` | Missing, malformed, or expired token |
-| `403` | Authenticated but not permitted |
-| `404` | Not found, or not visible to this caller |
-| `409` | Conflicts with existing state, for example a duplicate allocation |
+| Code  | Meaning                                                                     |
+| ----- | --------------------------------------------------------------------------- |
+| `200` | Successful read or update                                                   |
+| `201` | Resource created                                                            |
+| `400` | Malformed request or failed validation                                      |
+| `401` | Missing, malformed, or expired token                                        |
+| `403` | Authenticated but not permitted                                             |
+| `404` | Not found, or not visible to this caller                                    |
+| `409` | Conflicts with existing state, for example a duplicate allocation           |
 | `422` | Well-formed but semantically invalid, for example ordering after the cutoff |
-| `429` | Rate limited |
-| `500` | Unexpected server error |
+| `429` | Rate limited                                                                |
+| `500` | Unexpected server error                                                     |
 
 ### Defined error codes
 
-| Code | Status | Meaning |
-| --- | --- | --- |
-| `VALIDATION_ERROR` | 400 | Request failed schema validation |
-| `UNAUTHORIZED` | 401 | No token, or the token is invalid or expired |
-| `FORBIDDEN` | 403 | Role or permission does not allow this action |
-| `NOT_FOUND` | 404 | Resource does not exist or is not visible to the caller |
-| `EMAIL_ALREADY_EXISTS` | 409 | Registration or update used an existing email |
-| `DUPLICATE_ALLOCATION` | 409 | The teacher already has an allocation for this period |
-| `ORDERING_CLOSED` | 422 | The cutoff for this date has passed |
-| `ORDERING_DISABLED` | 422 | Ordering is disabled for this date, such as a holiday |
-| `ITEM_UNAVAILABLE` | 422 | A requested item is inactive or unavailable |
-| `MIXED_LOCATIONS` | 422 | An order contained items from more than one location |
-| `BUDGET_INSUFFICIENT` | 422 | Order total exceeds the available balance |
-| `INVALID_STATUS_TRANSITION` | 422 | The requested status change is not allowed from the current status |
-| `CUTOFF_PASSED` | 422 | Modification attempted after the cutoff |
-| `RATE_LIMITED` | 429 | Too many requests |
+| Code                        | Status | Meaning                                                            |
+| --------------------------- | ------ | ------------------------------------------------------------------ |
+| `VALIDATION_ERROR`          | 400    | Request failed schema validation                                   |
+| `UNAUTHORIZED`              | 401    | No token, or the token is invalid or expired                       |
+| `FORBIDDEN`                 | 403    | Role or permission does not allow this action                      |
+| `NOT_FOUND`                 | 404    | Resource does not exist or is not visible to the caller            |
+| `EMAIL_ALREADY_EXISTS`      | 409    | Registration or update used an existing email                      |
+| `DUPLICATE_ALLOCATION`      | 409    | The teacher already has an allocation for this period              |
+| `ORDERING_CLOSED`           | 422    | The cutoff for this date has passed                                |
+| `ORDERING_DISABLED`         | 422    | Ordering is disabled for this date, such as a holiday              |
+| `ITEM_UNAVAILABLE`          | 422    | A requested item is inactive or unavailable                        |
+| `MIXED_LOCATIONS`           | 422    | An order contained items from more than one location               |
+| `BUDGET_INSUFFICIENT`       | 422    | Order total exceeds the available balance                          |
+| `INVALID_STATUS_TRANSITION` | 422    | The requested status change is not allowed from the current status |
+| `CUTOFF_PASSED`             | 422    | Modification attempted after the cutoff                            |
+| `RATE_LIMITED`              | 429    | Too many requests                                                  |
 
 Returning `404` rather than `403` for a resource belonging to another teacher
 prevents an authenticated user from probing for the existence of other
@@ -246,8 +244,20 @@ Returns active locations. Inactive locations are excluded.
 ```json
 {
   "data": [
-    { "id": 1, "name": "Bot Tola", "nameBn": "বটতলা", "description": "Traditional Bengali meals", "isActive": true },
-    { "id": 2, "name": "Central Cafeteria", "nameBn": "কেন্দ্রীয় ক্যাফেটেরিয়া", "description": null, "isActive": true }
+    {
+      "id": 1,
+      "name": "Bot Tola",
+      "nameBn": "বটতলা",
+      "description": "Traditional Bengali meals",
+      "isActive": true
+    },
+    {
+      "id": 2,
+      "name": "Central Cafeteria",
+      "nameBn": "কেন্দ্রীয় ক্যাফেটেরিয়া",
+      "description": null,
+      "isActive": true
+    }
   ],
   "meta": { "total": 2 }
 }
@@ -316,9 +326,7 @@ Request:
   "orderDate": "2026-10-16",
   "foodLocationId": 1,
   "idempotencyKey": "a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
-  "items": [
-    { "menuItemId": 10, "quantity": 2, "notes": "less spicy" }
-  ]
+  "items": [{ "menuItemId": 10, "quantity": 2, "notes": "less spicy" }]
 }
 ```
 
@@ -355,15 +363,15 @@ client-supplied total is ignored.
 
 Failure modes:
 
-| Situation | Code | Status |
-| --- | --- | --- |
-| After the 12:00 PM Asia/Dhaka cutoff | `ORDERING_CLOSED` | 422 |
-| Ordering disabled for that date | `ORDERING_DISABLED` | 422 |
-| An item is inactive or unavailable | `ITEM_UNAVAILABLE` | 422 |
-| Quantity is not a positive integer | `VALIDATION_ERROR` | 400 |
-| Items span more than one location | `MIXED_LOCATIONS` | 422 |
-| Total exceeds the available balance | `BUDGET_INSUFFICIENT` | 422 |
-| An order with this key already exists | none | 200, returns the original order |
+| Situation                             | Code                  | Status                          |
+| ------------------------------------- | --------------------- | ------------------------------- |
+| After the 12:00 PM Asia/Dhaka cutoff  | `ORDERING_CLOSED`     | 422                             |
+| Ordering disabled for that date       | `ORDERING_DISABLED`   | 422                             |
+| An item is inactive or unavailable    | `ITEM_UNAVAILABLE`    | 422                             |
+| Quantity is not a positive integer    | `VALIDATION_ERROR`    | 400                             |
+| Items span more than one location     | `MIXED_LOCATIONS`     | 422                             |
+| Total exceeds the available balance   | `BUDGET_INSUFFICIENT` | 422                             |
+| An order with this key already exists | none                  | 200, returns the original order |
 
 The whole operation is one database transaction. If any part fails, no order,
 no order items, and no ledger debit are written.
@@ -414,7 +422,7 @@ filters plus pagination.
       "foodLocation": { "id": 1, "name": "Bot Tola" },
       "status": "CONFIRMED",
       "total": { "amountPaisa": 30000, "amountFormatted": "৳300.00" },
-      "items": [ { "name": "Chicken Meal", "quantity": 2 } ]
+      "items": [{ "name": "Chicken Meal", "quantity": 2 }]
     }
   ],
   "meta": { "total": 1, "page": 1, "pageSize": 50 }
@@ -440,7 +448,7 @@ data source behind the collection sheet.
           { "name": "Chicken Meal", "quantity": 2 },
           { "name": "Rice and fish", "quantity": 1 }
         ],
-        "orders": [ { "id": 501, "teacherName": "A. Teacher", "items": [], "total": {} } ]
+        "orders": [{ "id": 501, "teacherName": "A. Teacher", "items": [], "total": {} }]
       }
     ],
     "dailyTotal": { "amountPaisa": 73000, "amountFormatted": "৳730.00" }
