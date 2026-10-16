@@ -111,7 +111,9 @@ place.
 **Money.** Always integer paisa, stored and computed in `bigint`. One taka is
 100 paisa, so ৳150 is `15000`. Floating point is never used for money. The API
 returns both `amountPaisa` (authoritative) and `amountFormatted` (display), and
-clients never compute money from the formatted string.
+clients never compute money from the formatted string. Because `node-postgres`
+returns int8 as a string, a type parser in `src/db/int8.ts` converts it at the
+driver boundary so `amountPaisa` really is a number.
 
 **Time.** Timestamps are `timestamptz` written in UTC. `orders.order_date` is a
 `date` holding the `Asia/Dhaka` calendar day, not a timestamp. The cutoff is

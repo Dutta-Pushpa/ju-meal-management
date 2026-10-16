@@ -12,11 +12,11 @@ and track collection and delivery.
 > **সংক্ষিপ্ত:** জাহান্গিরনগর বিশ্ববিদ্যালয়ের সিএসই বিভাগের শিক্ষকদের জন্য খাবার
 > অর্ডার ও সংগ্রহ ব্যবস্থাপনার ওয়েব সিস্টেম।
 
-> **Status: under active development.** The API scaffold, configuration
-> validation, logging, and `GET /health` are in place. The database, migrations,
-> seed script, authentication, and frontend are not implemented yet, so
-> `npm run db:migrate` and `npm run db:seed` do not exist. The stack and features
-> below describe the intended system.
+> **Status: under active development.** The API scaffold, the full database
+> schema, the migration runner, and the seed data are in place and tested against
+> a real PostgreSQL instance. Authentication, business endpoints, and the
+> frontend are not implemented yet, so there is nothing to log in to. The stack
+> and features below describe the intended system.
 
 > ### Data notice
 >

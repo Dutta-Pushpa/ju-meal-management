@@ -343,7 +343,40 @@ Configuration that staff may change without a deployment.
 Seeded keys: `order_cutoff_time` (default `12:00`), `budget_rollover` (default
 `false`), `timezone` (default `Asia/Dhaka`), `ordering_disabled_dates`.
 
-## Transaction boundaries
+## What the database enforces, and what it cannot
+
+Most rules live in the schema as constraints, triggers, or unique indexes, so a
+service, a script, or a future endpoint cannot quietly bypass them: the append-only
+ledger, non-overlapping budget periods, one allocation per teacher per period,
+case-insensitive unique email, idempotent orders, positive prices and quantities,
+`line_total_paisa` equal to unit price times quantity, and `cancelled_at` present
+exactly when an order is cancelled.
+
+Two rules are **not** enforceable this way and are stated here so nobody assumes
+otherwise:
+
+- **`orders.total_paisa` equals the sum of its line items.** A `CHECK`
+  constraint cannot span rows. The order service computes both inside one
+  transaction, and the seed test asserts the invariant across all seeded data.
+- **One food location per order.** Only the service layer can see every line item
+  at once, so it validates this before writing.
+
+## Truncating and `app_settings`
+
+`TRUNCATE ... CASCADE` follows every foreign key pointing at the truncated
+tables. Because `app_settings.updated_by` references `users`, truncating `users`
+also empties `app_settings`. Both the seed script and the test helper restore the
+settings defaults immediately afterwards, so neither leaves the database
+unconfigured. Any future reset script must do the same.
+
+## int8 and money
+
+Every money column is `bigint`. `node-postgres` returns int8 as a string by
+default, which would contradict the API contract of an integer `amountPaisa`.
+`server/src/db/int8.ts` installs a type parser that converts int8 to a number,
+and it is imported by both the application pool and the test pool, because the
+parser is process-wide. Paisa amounts are many orders of magnitude below
+`Number.MAX_SAFE_INTEGER`, so this is exact.
 
 Two operations must be atomic. If either half fails, both roll back, so an order
 can never exist without its ledger debit, and a debit can never exist without its

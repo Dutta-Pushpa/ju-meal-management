@@ -23,6 +23,29 @@ npm run dev:server           # API on http://localhost:4000
 
 `GET /health` reports database connectivity.
 
+### The test database
+
+Integration tests need their own database. They never run against development
+or production data: both the helper and the global setup refuse to connect
+unless the database name ends in `_test`.
+
+```bash
+docker compose exec db createdb -U ju_meal ju_meal_test
+```
+
+Then run the tests with that database:
+
+```bash
+DATABASE_URL=postgresql://ju_meal:ju_meal_dev_password@localhost:5432/ju_meal_test npm test
+```
+
+The test database is migrated automatically before the suite starts, so a new
+checkout needs nothing more than the database existing. Put the value in `.env`
+so it is picked up automatically.
+
+Tests that need a genuinely empty database create a throwaway one and drop it
+afterwards, so they never disturb the shared test database.
+
 ## Commands
 
 | Command                     | Description                          |
@@ -147,8 +170,8 @@ failure.
 
 | Phase | Scope                                      | Status      |
 | ----- | ------------------------------------------ | ----------- |
-| 1     | Scaffold, TypeScript, lint, Docker Compose | Planned     |
-| 2     | Schema, migration runner, seed             | Planned     |
+| 1     | Scaffold, TypeScript, lint, Docker Compose | Verified    |
+| 2     | Schema, migration runner, seed             | Verified    |
 | 3     | Authentication and authorisation           | Planned     |
 | 4     | MVC skeleton and locations CRUD            | Planned     |
 | 5     | Menus, budgets, teacher ordering           | Planned     |
