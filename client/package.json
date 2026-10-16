@@ -1,0 +1,10 @@
+{
+  "name": "@ju/client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "JU Meal Management System frontend (React, Vite, TypeScript)",
+  "scripts": {
+    "dev": "echo \"The frontend is built in Phase 10. Nothing to run yet.\""
+  }
+}
