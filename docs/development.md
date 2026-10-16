@@ -172,7 +172,7 @@ failure.
 | ----- | ------------------------------------------ | ----------- |
 | 1     | Scaffold, TypeScript, lint, Docker Compose | Verified    |
 | 2     | Schema, migration runner, seed             | Verified    |
-| 3     | Authentication and authorisation           | Planned     |
+| 3     | Authentication and authorisation           | Verified    |
 | 4     | MVC skeleton and locations CRUD            | Planned     |
 | 5     | Menus, budgets, teacher ordering           | Planned     |
 | 6     | Staff operations and reporting             | Planned     |
