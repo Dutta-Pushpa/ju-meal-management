@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+
+# Environment files. Only .env.example is committed.
+.env
+.env.local
+.env.*.local
+
+# Test and coverage output
+coverage/
+tests/load/results/
+*.jtl
+newman-report/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Editor and OS files
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# JMeter
+.jmeter/
