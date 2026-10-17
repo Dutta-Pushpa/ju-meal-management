@@ -1,0 +1,106 @@
+name: CD
+
+# Continuous delivery.
+#
+# Today this publishes a container image for the API to the GitHub Container
+# Registry. Publishing only happens once a Dockerfile exists, so the workflow is
+# inert until Phase 11 adds one. The final job is a deliberately disabled
+# deployment placeholder; see docs/deployment.md for how to turn it on.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+# Never cancel a release that is already under way.
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  # Required to push an image to GHCR with the workflow's own token.
+  packages: write
+
+jobs:
+  detect:
+    name: Detect container inputs
+    runs-on: ubuntu-latest
+    outputs:
+      dockerfile: ${{ steps.scan.outputs.dockerfile }}
+      dockerfile_path: ${{ steps.scan.outputs.path }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: scan
+        name: Locate a Dockerfile
+        run: |
+          if [ -f Dockerfile ]; then
+            echo "path=Dockerfile" >> "$GITHUB_OUTPUT"
+            echo "dockerfile=true" >> "$GITHUB_OUTPUT"
+          elif [ -f server/Dockerfile ]; then
+            echo "path=server/Dockerfile" >> "$GITHUB_OUTPUT"
+            echo "dockerfile=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "path=" >> "$GITHUB_OUTPUT"
+            echo "dockerfile=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No Dockerfile found. Skipping the image build (Phase 11)."
+          fi
+
+  publish-image:
+    name: Publish image to GHCR
+    needs: detect
+    if: needs.detect.outputs.dockerfile == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lowercase the image name
+        # A repository owner may contain capitals, which GHCR rejects.
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}/ju-meal-server" >> "$GITHUB_ENV"
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        name: Compute tags and labels
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=ref,event=tag
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=short
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ needs.detect.outputs.dockerfile_path }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  # ---------------------------------------------------------------------------
+  # Phase 11 — deployment. Disabled on purpose.
+  #
+  # It runs only when the repository variable DEPLOY_ENABLED is set to the
+  # string "true" AND an image was published. Creating the `production`
+  # environment also lets reviewers approve every deploy. Replace the step below
+  # with the real deploy once a host is chosen; docs/deployment.md lists the
+  # required secrets and the checklist.
+  # ---------------------------------------------------------------------------
+  deploy:
+    name: Deploy (placeholder)
+    needs: [detect, publish-image]
+    if: ${{ needs.publish-image.result == 'success' && vars.DEPLOY_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    steps:
+      - name: Explain what is still missing
+        run: |
+          echo "::warning::Deployment is a placeholder. An image was published to GHCR."
+          echo "Choose a host, set the deploy secrets, then replace this job."
+          echo "See docs/deployment.md for the checklist."
