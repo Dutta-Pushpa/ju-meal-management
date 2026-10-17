@@ -22,6 +22,7 @@
     "db:seed": "tsx db/seed.ts",
     "test": "npm run test --workspace server",
     "test:watch": "npm run test:watch --workspace server",
+    "test:coverage": "npm run test:coverage --workspace server",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "typecheck": "npm run typecheck --workspace shared && npm run typecheck --workspace server && tsc --noEmit -p db/tsconfig.json",

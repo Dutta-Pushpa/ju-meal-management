@@ -203,30 +203,3 @@ export async function revokeAllSessionsForUser(db: Queryable, userId: number): P
 
   return result.rowCount ?? 0;
 }
-
-// ---------------------------------------------------------------------
-// Audit
-// ---------------------------------------------------------------------
-
-export async function writeAudit(
-  db: Queryable,
-  entry: {
-    actorUserId: number | undefined;
-    action: string;
-    entityType: string;
-    entityId: number | undefined;
-    metadata: Record<string, unknown>;
-  },
-): Promise<void> {
-  await db.query(
-    `INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, metadata)
-     VALUES ($1, $2, $3, $4, $5::jsonb)`,
-    [
-      entry.actorUserId ?? null,
-      entry.action,
-      entry.entityType,
-      entry.entityId ?? null,
-      JSON.stringify(entry.metadata),
-    ],
-  );
-}

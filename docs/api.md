@@ -88,22 +88,24 @@ never included.
 
 ### Defined error codes
 
-| Code                        | Status | Meaning                                                            |
-| --------------------------- | ------ | ------------------------------------------------------------------ |
-| `VALIDATION_ERROR`          | 400    | Request failed schema validation                                   |
-| `UNAUTHORIZED`              | 401    | No token, or the token is invalid or expired                       |
-| `FORBIDDEN`                 | 403    | Role or permission does not allow this action                      |
-| `NOT_FOUND`                 | 404    | Resource does not exist or is not visible to the caller            |
-| `EMAIL_ALREADY_EXISTS`      | 409    | Registration or update used an existing email                      |
-| `DUPLICATE_ALLOCATION`      | 409    | The teacher already has an allocation for this period              |
-| `ORDERING_CLOSED`           | 422    | The cutoff for this date has passed                                |
-| `ORDERING_DISABLED`         | 422    | Ordering is disabled for this date, such as a holiday              |
-| `ITEM_UNAVAILABLE`          | 422    | A requested item is inactive or unavailable                        |
-| `MIXED_LOCATIONS`           | 422    | An order contained items from more than one location               |
-| `BUDGET_INSUFFICIENT`       | 422    | Order total exceeds the available balance                          |
-| `INVALID_STATUS_TRANSITION` | 422    | The requested status change is not allowed from the current status |
-| `CUTOFF_PASSED`             | 422    | Modification attempted after the cutoff                            |
-| `RATE_LIMITED`              | 429    | Too many requests                                                  |
+| Code                         | Status | Meaning                                                                 |
+| ---------------------------- | ------ | ----------------------------------------------------------------------- |
+| `VALIDATION_ERROR`           | 400    | Request failed schema validation                                        |
+| `UNAUTHORIZED`               | 401    | No token, or the token is invalid or expired                            |
+| `FORBIDDEN`                  | 403    | Role or permission does not allow this action                           |
+| `NOT_FOUND`                  | 404    | Resource does not exist or is not visible to the caller                 |
+| `EMAIL_ALREADY_EXISTS`       | 409    | Registration or update used an existing email                           |
+| `LOCATION_ALREADY_EXISTS`    | 409    | A location with that name already exists                                |
+| `LOCATION_HAS_ACTIVE_ORDERS` | 409    | The location has orders in the current period and cannot be deactivated |
+| `DUPLICATE_ALLOCATION`       | 409    | The teacher already has an allocation for this period                   |
+| `ORDERING_CLOSED`            | 422    | The cutoff for this date has passed                                     |
+| `ORDERING_DISABLED`          | 422    | Ordering is disabled for this date, such as a holiday                   |
+| `ITEM_UNAVAILABLE`           | 422    | A requested item is inactive or unavailable                             |
+| `MIXED_LOCATIONS`            | 422    | An order contained items from more than one location                    |
+| `BUDGET_INSUFFICIENT`        | 422    | Order total exceeds the available balance                               |
+| `INVALID_STATUS_TRANSITION`  | 422    | The requested status change is not allowed from the current status      |
+| `CUTOFF_PASSED`              | 422    | Modification attempted after the cutoff                                 |
+| `RATE_LIMITED`               | 429    | Too many requests                                                       |
 
 Returning `404` rather than `403` for a resource belonging to another teacher
 prevents an authenticated user from probing for the existence of other
@@ -275,11 +277,14 @@ Single location. `404` if it does not exist or is inactive.
 { "name": "Tasty Treat", "nameBn": "টেস্টি ট্রিট", "description": "Bakery and fast food" }
 ```
 
-`201` returns the created location. `409` if the name is already taken.
+`201` returns the created location. `409 LOCATION_ALREADY_EXISTS` if the name is
+already taken (compared case-insensitively).
 
 ### `PATCH /api/locations/:id`
 
-**Auth:** same as create. Partial update; only supplied fields change.
+**Auth:** same as create. Partial update; only supplied fields change, and an
+absent field is left untouched. Sending `"nameBn": null` clears it. Setting
+`"isActive": false` is guarded exactly like `DELETE` below.
 
 ### `DELETE /api/locations/:id`
 
@@ -288,8 +293,11 @@ Single location. `404` if it does not exist or is inactive.
 **Soft deactivation.** Sets `is_active = false`. Returns `200`. The row is
 retained because historical orders reference it, per policy P8.
 
-Deleting a location that still has orders in the current period returns
-`409 LOCATION_HAS_ACTIVE_ORDERS`. Deactivation always succeeds.
+Deactivating a location that still has orders in the current budget period
+returns `409 LOCATION_HAS_ACTIVE_ORDERS`. Both this endpoint and `PATCH` with
+`"isActive": false` apply the same guard; neither bypasses it. A location whose
+only orders in the period are cancelled, or whose orders fall in a past period,
+deactivates normally.
 
 ### `GET /api/locations/:id/menu`
 

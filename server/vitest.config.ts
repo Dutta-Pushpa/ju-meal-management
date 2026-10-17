@@ -13,8 +13,16 @@ export default defineConfig({
     // Integration tests share one PostgreSQL instance. Running files in
     // parallel would make their transactions and truncations collide.
     fileParallelism: false,
-    testTimeout: 15_000,
-    hookTimeout: 30_000,
+    // Defaults suit a local database. A hosted provider such as Neon can take
+    // far longer to create a scratch database and migrate it, so both timeouts
+    // can be raised for a run without editing this file, for example:
+    //   $env:VITEST_TEST_TIMEOUT = 120000; npm test
+    testTimeout: Number(process.env['VITEST_TEST_TIMEOUT'] ?? 15_000),
+    hookTimeout: Number(process.env['VITEST_HOOK_TIMEOUT'] ?? 30_000),
+    // A hosted database can drop a connection mid-test. An opt-in retry absorbs
+    // that transient failure without masking real ones locally, where the retry
+    // stays at 0.
+    retry: Number(process.env['VITEST_RETRY'] ?? 0),
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html', 'lcov'],

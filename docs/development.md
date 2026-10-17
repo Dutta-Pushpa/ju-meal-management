@@ -46,6 +46,68 @@ so it is picked up automatically.
 Tests that need a genuinely empty database create a throwaway one and drop it
 afterwards, so they never disturb the shared test database.
 
+### A shared database with Neon
+
+[Neon](https://neon.tech) is hosted PostgreSQL. A team can point every checkout
+at the same database, so nobody has to seed or migrate on their own.
+
+**One-time setup, by whoever creates the project:**
+
+1. Create a Neon project. It gives two connection strings for every branch:
+   - the **pooled** string — its host contains `-pooler`;
+   - the **direct** string — no `-pooler`, and the one for migrations.
+2. Put them in `.env`:
+
+   ```bash
+   DATABASE_URL="postgresql://...@ep-xxx-pooler.aws.neon.tech/neondb?sslmode=require"
+   DATABASE_ADMIN_URL="postgresql://...@ep-xxx.aws.neon.tech/neondb?sslmode=require"
+   DB_SSL=true
+   ```
+
+3. Create the schema and demo data once:
+
+   ```bash
+   npm run db:migrate    # uses DATABASE_ADMIN_URL, the direct connection
+   npm run db:seed
+   ```
+
+4. Share both strings with teammates out of band — a password manager or a
+   private GitHub environment secret. Never commit them; they are credentials.
+
+**How it fits the project.** The API reads `DATABASE_URL` through a pool, so the
+pooled string is right at runtime. Migrations take a session-level advisory lock
+and run multi-statement transactions, so they use `DATABASE_ADMIN_URL`, the
+direct string — a transaction pooler would drop the lock between statements.
+`db/migrate` and `db/seed` both prefer the direct string.
+
+**Keep tests local.** The test suite refuses any database whose name does not end
+in `_test`, and some tests create and drop throwaway databases. Run tests against
+local Docker PostgreSQL or CI, not the shared Neon database. If you want tests on
+Neon, branch the project, create a `ju_meal_test` database there, and point
+`DATABASE_URL` at that database's **direct** (non-pooled) string for the run.
+
+Creating a database is slow on a hosted provider, so raise the Vitest timeouts
+for a Neon run rather than editing the config defaults:
+
+```powershell
+$env:DATABASE_URL = "postgresql://...@ep-xxx.aws.neon.tech/ju_meal_test?sslmode=require"
+$env:VITEST_TEST_TIMEOUT = 120000
+$env:VITEST_RETRY = 1
+npm test
+Remove-Item Env:DATABASE_URL, Env:VITEST_TEST_TIMEOUT, Env:VITEST_RETRY
+```
+
+`VITEST_RETRY` absorbs a connection a hosted provider drops mid-test;
+`VITEST_HOOK_TIMEOUT` is available too. An interrupted run can leave
+`jugm_scratch_*` databases behind; drop them by hand.
+
+**Branches.** Neon can copy a database instantly. A teammate can branch to get an
+isolated copy for a risky change, then delete the branch. Each branch has its own
+connection strings.
+
+On the free tier Neon suspends an idle database and resumes it on the next
+connection, so the first query after a quiet spell is slightly slower.
+
 ## Commands
 
 | Command                     | Description                          |
@@ -57,6 +119,7 @@ afterwards, so they never disturb the shared test database.
 | `npm run db:seed`           | Reset and reload fictional demo data |
 | `npm test`                  | Unit and integration tests           |
 | `npm run test:watch`        | Same, in watch mode                  |
+| `npm run test:coverage`     | Same, with a coverage report         |
 | `npm run test:api`          | Postman collection via Newman        |
 | `npm run test:load`         | JMeter load test                     |
 | `npm run lint`              | Lint the workspace                   |
@@ -128,19 +191,29 @@ npm run test:api     # same command locally and in CI
 
 ## CI
 
-`.github/workflows/ci.yml` runs on every push and pull request:
+`.github/workflows/ci.yml` runs on every push to `main` and `development` and on
+every pull request. It starts a PostgreSQL 16 service, installs with `npm ci`,
+and then:
 
-1. Start a PostgreSQL service container
-2. Install dependencies
-3. Lint and type-check
-4. Apply migrations
-5. Seed the test database
-6. Run Vitest
-7. Boot the API and wait for `/health`
-8. Run the Newman collection
-9. Archive reports as artifacts
+| Job                        | What it does                                                | Active when                               |
+| -------------------------- | ----------------------------------------------------------- | ----------------------------------------- |
+| Capture phase inputs       | Scans the tree for later-phase artifacts                    | Always                                    |
+| Format, lint, type-check   | `format:check`, `lint`, `typecheck`                         | Always                                    |
+| Unit and integration tests | `npm run test:coverage` against a real PostgreSQL service   | Always — coverage uploaded as an artifact |
+| API collection (Newman)    | Boots the API, waits for `/health`, runs `npm run test:api` | `postman/**/*.json` exists (Phase 7)      |
+| Frontend build             | `npm run build --workspace client`                          | `client/vite.config.*` exists (Phase 10)  |
 
-Any failing step fails the pipeline.
+Any failing step fails the pipeline. The tests migrate their own database before
+running, and tests that need a genuinely empty database create and drop one.
+
+Jobs for later phases skip themselves until their files exist, so neither this
+document nor the workflow needs editing as the project grows. A separate
+`.github/workflows/load.yml` runs the JMeter plan nightly or on demand, once
+`tests/load/*.jmx` exists (Phase 9).
+
+Packaging and deployment — the container image published to GHCR, and the
+deployment checklist for Phase 11 — are documented in
+[deployment.md](deployment.md).
 
 ## Load testing
 
@@ -173,13 +246,17 @@ failure.
 | 1     | Scaffold, TypeScript, lint, Docker Compose | Verified    |
 | 2     | Schema, migration runner, seed             | Verified    |
 | 3     | Authentication and authorisation           | Verified    |
-| 4     | MVC skeleton and locations CRUD            | Planned     |
+| 4     | MVC skeleton and locations CRUD            | Verified    |
 | 5     | Menus, budgets, teacher ordering           | Planned     |
 | 6     | Staff operations and reporting             | Planned     |
 | 7     | Postman collection and Newman              | Planned     |
-| 8     | CI integration                             | Planned     |
+| 8     | CI integration                             | In progress |
 | 9     | Load testing                               | Planned     |
 | 10    | Frontend                                   | Not started |
 | 11    | Deployment                                 | Not started |
 
 A phase is `Verified` only once it is implemented **and** its tests pass.
+`In progress` means the work is present but not yet proven green in CI. The
+CI workflows (`ci.yml`, `cd.yml`, `load.yml`) are in place; Phase 8 becomes
+`Verified` once they run green on GitHub, and the CD deploy job stays a
+documented placeholder until Phase 11.

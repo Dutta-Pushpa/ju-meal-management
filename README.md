@@ -13,11 +13,13 @@ and track collection and delivery.
 > অর্ডার ও সংগ্রহ ব্যবস্থাপনার ওয়েব সিস্টেম।
 
 > **Status: under active development.** The API scaffold, the full database
-> schema, the migration runner, the seed data, and authentication
-> (register, login, logout, session restore, role and permission guards) are in
-> place and tested against a real PostgreSQL instance. Business endpoints and
-> the frontend are not implemented yet. The stack and features below describe
-> the intended system.
+> schema, the migration runner, the seed data, authentication (register, login,
+> logout, session restore, role and permission guards), and food-location CRUD
+> (list, create, update, soft-deactivate, with permission guards) are in place
+> and tested against a real PostgreSQL instance. The remaining business
+> endpoints (menus, budgets, ordering, staff operations) and the frontend are
+> not implemented yet. The stack and features below describe the intended
+> system.
 
 > ### Data notice
 >
@@ -140,6 +142,7 @@ docker-compose.yml   PostgreSQL service
 | [api.md](docs/api.md)                   | Endpoint contract, error format, sample requests and responses                |
 | [policies.md](docs/policies.md)         | Business rules, assumptions, and open questions for the department            |
 | [development.md](docs/development.md)   | Setup, commands, testing strategy, Postman, Newman, CI, load testing, roadmap |
+| [deployment.md](docs/deployment.md)     | CI/CD pipelines, container publishing, release and deployment checklist       |
 
 **To make a decision about how the system behaves, [docs/policies.md](docs/policies.md)
 is the only document that needs department input.** The rest is implementation

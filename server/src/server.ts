@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { config as loadDotenv } from 'dotenv';
 import { createApp } from './app.js';
 import { loadConfig } from './config/env.js';
@@ -7,7 +8,13 @@ import { createLogger } from './utils/logger.js';
 // Load .env before anything reads configuration. Kept in the entry point rather
 // than in the config module so that importing the config module in a test has
 // no side effect.
-loadDotenv();
+//
+// The path is resolved from this module rather than from the process cwd. The
+// dev script runs as a workspace command (`npm run dev --workspace server`),
+// which sets the cwd to server/, but the single .env lives at the repository
+// root beside .env.example. Loading by cwd silently found no file and the
+// server exited with "DATABASE_URL is required".
+loadDotenv({ path: fileURLToPath(new URL('../../.env', import.meta.url)) });
 
 async function main(): Promise<void> {
   // Validate before anything else. A clear list of configuration problems is
