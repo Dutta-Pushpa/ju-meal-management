@@ -2,6 +2,7 @@ import { Router } from 'express';
 import type { Database } from '../db/pool.js';
 import type { AppConfig } from '../config/env.js';
 import { createAuthRouter } from './auth.routes.js';
+import { createLocationRouter } from './location.routes.js';
 
 /**
  * The API router. Everything versioned and authenticated is mounted here,
@@ -20,6 +21,14 @@ export function createApiRouter(deps: {
   const router = Router();
 
   router.use('/auth', createAuthRouter(deps));
+  router.use(
+    '/locations',
+    createLocationRouter({
+      db: deps.db,
+      jwtSecret: deps.config.JWT_SECRET,
+      timezone: deps.config.APP_TIMEZONE,
+    }),
+  );
 
   return router;
 }

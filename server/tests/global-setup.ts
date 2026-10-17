@@ -1,5 +1,13 @@
+import { fileURLToPath } from 'node:url';
+import { config as loadDotenv } from 'dotenv';
 import { Client } from 'pg';
 import { applyMigrations, readMigrations } from '../../db/migrate.js';
+
+// Load the repo-root .env before reading DATABASE_URL. Vitest runs globalSetup
+// before the per-file setup files, so this cannot rely on tests/setup.ts having
+// loaded it. The path is resolved from this module because the cwd is server/,
+// where there is no .env.
+loadDotenv({ path: fileURLToPath(new URL('../../.env', import.meta.url)) });
 
 /**
  * Vitest global setup.

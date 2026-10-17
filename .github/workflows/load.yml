@@ -1,0 +1,105 @@
+name: Load test
+
+# Phase 9. Runs on demand and nightly, never on every push: a load test is slow
+# and belongs off the pull-request critical path. It stays inert until a JMeter
+# plan exists.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 3 * * *'
+
+concurrency:
+  group: load-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  detect:
+    name: Detect load plan
+    runs-on: ubuntu-latest
+    outputs:
+      plan: ${{ steps.scan.outputs.plan }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: scan
+        run: |
+          echo "plan=${{ hashFiles('tests/load/**/*.jmx') != '' }}" >> "$GITHUB_OUTPUT"
+          if [ "${{ hashFiles('tests/load/**/*.jmx') != '' }}" = "false" ]; then
+            echo "::notice::No JMeter plan found. Skipping (Phase 9)."
+          fi
+
+  jmeter:
+    name: JMeter against a seeded database
+    needs: detect
+    if: needs.detect.outputs.plan == 'true'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ju_meal
+          POSTGRES_PASSWORD: ju_meal_dev_password
+          POSTGRES_DB: ju_meal
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ju_meal -d ju_meal"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      NODE_ENV: test
+      PORT: '4000'
+      LOG_LEVEL: silent
+      LOG_PRETTY: 'false'
+      DATABASE_URL: postgresql://ju_meal:ju_meal_dev_password@localhost:5432/ju_meal
+      JWT_SECRET: ci-load-secret-that-is-longer-than-32-characters
+      JMETER_VERSION: 5.6.3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install JMeter
+        run: |
+          curl -fsSL -o jmeter.tgz \
+            "https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-${JMETER_VERSION}.tgz"
+          tar -xzf jmeter.tgz
+          echo "JMETER_HOME=${PWD}/apache-jmeter-${JMETER_VERSION}" >> "$GITHUB_ENV"
+          echo "${PWD}/apache-jmeter-${JMETER_VERSION}/bin" >> "$GITHUB_PATH"
+      - name: Install dependencies
+        run: npm ci
+      - name: Migrate and seed
+        run: npm run db:migrate && npm run db:seed
+      - name: Start the API
+        run: |
+          npm run start --workspace server > server.log 2>&1 &
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://localhost:4000/health > /dev/null; then
+              echo "API healthy after ${attempt}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "API did not become healthy within 30s"
+          cat server.log
+          exit 1
+      - name: Run the load test
+        run: npm run test:load
+      - name: Server log on failure
+        if: failure()
+        run: cat server.log
+      - name: Upload the JMeter report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jmeter-report
+          path: tests/load/results/
+          if-no-files-found: ignore

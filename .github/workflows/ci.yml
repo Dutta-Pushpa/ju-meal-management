@@ -1,0 +1,200 @@
+name: CI
+
+# Runs on every push to the long-lived branches and on every pull request.
+#
+# The phase-specific jobs near the bottom detect their own input files and skip
+# themselves while those phases are still unfinished, so this workflow does not
+# need editing as the project grows: adding the files is what turns a job on.
+on:
+  push:
+    branches: [main, development]
+  pull_request:
+
+# A newer push to the same branch makes an in-flight run redundant.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Announce which later-phase artifacts are present. Everything that depends on
+  # a phase still to come reads these outputs instead of guessing.
+  # ---------------------------------------------------------------------------
+  detect:
+    name: Capture phase inputs
+    runs-on: ubuntu-latest
+    outputs:
+      postman: ${{ steps.scan.outputs.postman }}
+      frontend: ${{ steps.scan.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: scan
+        name: Scan the tree
+        run: |
+          echo "postman=${{ hashFiles('postman/**/*.json') != '' }}" >> "$GITHUB_OUTPUT"
+          echo "frontend=${{ hashFiles('client/vite.config.*') != '' }}" >> "$GITHUB_OUTPUT"
+
+  # ---------------------------------------------------------------------------
+  # Always-on quality gates. These are the checks a pull request must pass.
+  # ---------------------------------------------------------------------------
+  quality:
+    name: Format, lint, type-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Check formatting
+        run: npm run format:check
+      - name: Lint
+        run: npm run lint
+      - name: Type-check
+        run: npm run typecheck
+
+  # ---------------------------------------------------------------------------
+  # Tests against a real PostgreSQL service, because the rules under test are
+  # transaction and constraint behaviour that a fake cannot reproduce.
+  # ---------------------------------------------------------------------------
+  tests:
+    name: Unit and integration tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ju_meal
+          POSTGRES_PASSWORD: ju_meal_dev_password
+          POSTGRES_DB: ju_meal_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ju_meal -d ju_meal_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      NODE_ENV: test
+      LOG_LEVEL: silent
+      LOG_PRETTY: 'false'
+      DATABASE_URL: postgresql://ju_meal:ju_meal_dev_password@localhost:5432/ju_meal_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      # The suite migrates the test database itself before running. Tests that
+      # need an empty database create and drop their own.
+      - name: Run tests with coverage
+        run: npm run test:coverage
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: server/coverage/
+          if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------
+  # Phase 7 — Postman collection through Newman. Skips until the collection is
+  # committed; it then boots the API against a seeded database and runs it.
+  # ---------------------------------------------------------------------------
+  api-tests:
+    name: API collection (Newman)
+    needs: [detect, tests]
+    if: needs.detect.outputs.postman == 'true'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ju_meal
+          POSTGRES_PASSWORD: ju_meal_dev_password
+          POSTGRES_DB: ju_meal
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ju_meal -d ju_meal"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      NODE_ENV: test
+      PORT: '4000'
+      LOG_LEVEL: silent
+      LOG_PRETTY: 'false'
+      DATABASE_URL: postgresql://ju_meal:ju_meal_dev_password@localhost:5432/ju_meal
+      # Throwaway value for this job only. Never reused anywhere real.
+      JWT_SECRET: ci-collection-secret-that-is-longer-than-32-characters
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Migrate and seed
+        run: npm run db:migrate && npm run db:seed
+      - name: Start the API
+        run: |
+          npm run start --workspace server > server.log 2>&1 &
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://localhost:4000/health > /dev/null; then
+              echo "API healthy after ${attempt}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "API did not become healthy within 30s"
+          cat server.log
+          exit 1
+      - name: Run the collection
+        run: npm run test:api
+      - name: Server log on failure
+        if: failure()
+        run: cat server.log
+      - name: Upload the Newman report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: newman-report
+          path: newman-report/
+          if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------
+  # Phase 10 — frontend. Skips until the client becomes a real Vite app.
+  # ---------------------------------------------------------------------------
+  frontend:
+    name: Frontend build
+    needs: detect
+    if: needs.detect.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Build the client
+        run: npm run build --workspace client
+      - name: Upload the built site
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-build
+          path: client/dist/
+          if-no-files-found: error

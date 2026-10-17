@@ -5,6 +5,7 @@ import 'dotenv/config';
 import bcrypt from 'bcrypt';
 import { Client } from 'pg';
 import { loadConfig } from '../server/src/config/env.js';
+import { resolveConnectionString } from './migrate.js';
 
 /**
  * Seed runner.
@@ -116,8 +117,13 @@ async function seed(): Promise<void> {
 
   const config = result.config;
 
-  // Seeding writes demo data into whatever database DATABASE_URL points at.
-  // A guard is cheap insurance against wiping the wrong one.
+  // Seed through the direct connection, the same one migrations use. Seeding
+  // runs multi-statement SQL inside a single transaction, so it must not go
+  // through a transaction pooler such as Neon's pooled endpoint.
+  const connectionString = resolveConnectionString(config);
+
+  // Seeding writes demo data into whatever database the connection string
+  // points at. A guard is cheap insurance against wiping the wrong one.
   if (config.NODE_ENV === 'production') {
     console.error(
       'Refusing to seed with NODE_ENV=production. ' +
@@ -129,7 +135,7 @@ async function seed(): Promise<void> {
 
   const databaseName = (() => {
     try {
-      return new URL(config.DATABASE_URL).pathname.replace(/^\//, '');
+      return new URL(connectionString).pathname.replace(/^\//, '');
     } catch {
       return '';
     }
@@ -139,7 +145,7 @@ async function seed(): Promise<void> {
   const hashes = await hashAll();
 
   const client = new Client({
-    connectionString: config.DATABASE_URL,
+    connectionString,
     application_name: 'ju-meal-seed',
   });
 

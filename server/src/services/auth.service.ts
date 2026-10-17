@@ -8,7 +8,9 @@ import {
   verifyPassword,
 } from '../utils/password.js';
 import { type IssuedToken, signAccessToken, verifyAccessToken } from '../utils/token.js';
+import { isUniqueViolation } from '../utils/pg-errors.js';
 import * as users from '../models/user.model.js';
+import { writeAudit } from '../models/audit.model.js';
 import type { Database, Queryable, TransactionClient } from '../db/pool.js';
 
 /**
@@ -101,7 +103,7 @@ export async function registerUser(
       permissions,
     });
 
-    await users.writeAudit(deps.db, {
+    await writeAudit(deps.db, {
       actorUserId: actor?.id,
       action: 'user.created',
       entityType: 'user',
@@ -120,12 +122,6 @@ export async function registerUser(
     }
     throw error;
   }
-}
-
-function isUniqueViolation(error: unknown): boolean {
-  return (
-    typeof error === 'object' && error !== null && (error as { code?: string }).code === '23505'
-  );
 }
 
 /**
@@ -189,7 +185,7 @@ export async function login(
     deps.tokenLifetimeMinutes,
   );
 
-  await users.writeAudit(deps.db, {
+  await writeAudit(deps.db, {
     actorUserId: user.id,
     action: 'auth.login',
     entityType: 'user',
