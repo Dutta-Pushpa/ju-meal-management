@@ -342,6 +342,10 @@ Configuration that staff may change without a deployment.
 
 Seeded keys: `order_cutoff_time` (default `12:00`), `budget_rollover` (default
 `false`), `timezone` (default `Asia/Dhaka`), `ordering_disabled_dates`.
+When rollover is enabled, creating a period credits each active teacher's
+positive remaining balance from the immediately preceding period as a signed
+`adjustment` ledger entry in the new period. Period creation and rollover credits
+commit or roll back together.
 
 ## What the database enforces, and what it cannot
 

@@ -148,16 +148,17 @@ database whose name does not end in `_test`.
 
 | Area          | Cases                                                                                                                                                                                 |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Auth          | Login success and failure, bcrypt storage and cost upgrade on login, 72-byte input rejection, duplicate email, registration validation, rate limiting, no user enumeration            |
+| Auth          | Login success and failure, bcrypt storage and cost upgrade on login, 72-byte input rejection, duplicate email, production registration permissions, rate limiting, no user enumeration |
 | Authorisation | Missing, malformed, and expired tokens; `tokenVersion` revocation; teacher refused on staff endpoints; staff refused without the required permission                                  |
-| Ordering      | Server-calculated totals, client total ignored, atomic order + items + ledger debit, insufficient balance with no partial writes, invalid quantity, unavailable item, mixed locations |
+| Ordering      | Server-calculated totals, client total ignored, atomic order + items + ledger debit, insufficient balance with no partial writes, invalid quantity, unavailable item, mixed locations, disabled dates, cutoff, idempotency |
 | Cutoff        | One second before, exactly at, and after the cutoff, plus the `Asia/Dhaka` boundary and disabled dates                                                                                |
 | Idempotency   | Repeated `idempotencyKey` creates no duplicate order or debit                                                                                                                         |
 | Concurrency   | Simultaneous orders cannot exceed a balance                                                                                                                                           |
 | Snapshots     | A later menu price change does not alter a historical order                                                                                                                           |
 | Cancellation  | Before-cutoff cancel with refund, refusal after cutoff, cross-teacher refusal, staff override is audited, cancelled order retained                                                    |
-| Staff ops     | Grouping by location, item quantity sums, location and daily totals, valid and invalid status transitions                                                                             |
-| Budget        | Ledger-derived balances, duplicate allocation rejected, adjustments require a reason                                                                                                  |
+| Staff ops     | Date-based order filters, grouping by location, item quantity sums, location and daily totals, valid and invalid status transitions                                                   |
+| Budget        | Ledger-derived balances, duplicate allocation rejected, adjustments require a reason, configurable rollover of positive prior-period balances                                          |
+| Settings      | Settings permission, value validation, persisted cutoff and audit record                                                                                                                  |
 | Data          | Migrations apply to an empty database, re-runs are a no-op, edited migrations are detected, seed is repeatable, locations are soft deleted                                            |
 
 ## Postman collection
@@ -247,8 +248,8 @@ failure.
 | 2     | Schema, migration runner, seed             | Verified    |
 | 3     | Authentication and authorisation           | Verified    |
 | 4     | MVC skeleton and locations CRUD            | Verified    |
-| 5     | Menus, budgets, teacher ordering           | Planned     |
-| 6     | Staff operations and reporting             | Planned     |
+| 5     | Menus, budgets, teacher ordering           | In progress |
+| 6     | Staff operations and reporting             | In progress |
 | 7     | Postman collection and Newman              | Planned     |
 | 8     | CI integration                             | In progress |
 | 9     | Load testing                               | Planned     |

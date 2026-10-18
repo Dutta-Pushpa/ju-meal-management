@@ -13,3 +13,10 @@ export function isUniqueViolation(error: unknown): boolean {
     typeof error === 'object' && error !== null && (error as { code?: string }).code === '23505'
   );
 }
+
+/** True when a PostgreSQL exclusion constraint rejected a write. */
+export function isExclusionViolation(error: unknown): boolean {
+  return (
+    typeof error === 'object' && error !== null && (error as { code?: string }).code === '23P01'
+  );
+}

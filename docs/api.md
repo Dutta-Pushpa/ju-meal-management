@@ -5,11 +5,10 @@ REST contract for the JU Meal Management System.
 > **সংক্ষিপ্ত:** এই ডকুমেন্টে সব API এন্ডপয়েন্ট, তাদের ইনপুট আউটপুট এবং
 > উদাহরণ দেওয়া আছে।
 
-> **Status:** `Planned`. This document specifies the contract to be implemented.
-> Sample payloads are illustrative of the intended shape. They are replaced with
-> captured real responses once each endpoint is built, and an endpoint is marked
-> `Verified` in [development.md](development.md#roadmap) only after it matches
-> this document.
+> **Status:** `In progress`. The endpoints below are implemented, but the sample
+> payloads remain illustrative until they are checked against real responses.
+> An endpoint is marked `Verified` in [development.md](development.md#roadmap)
+> only after it matches this document and its tests pass.
 
 ## Conventions
 
@@ -98,6 +97,7 @@ never included.
 | `LOCATION_ALREADY_EXISTS`    | 409    | A location with that name already exists                                |
 | `LOCATION_HAS_ACTIVE_ORDERS` | 409    | The location has orders in the current period and cannot be deactivated |
 | `DUPLICATE_ALLOCATION`       | 409    | The teacher already has an allocation for this period                   |
+| `BUDGET_PERIOD_ALREADY_EXISTS` | 409  | The period name is already used or its dates overlap another period       |
 | `ORDERING_CLOSED`            | 422    | The cutoff for this date has passed                                     |
 | `ORDERING_DISABLED`          | 422    | Ordering is disabled for this date, such as a holiday                   |
 | `ITEM_UNAVAILABLE`           | 422    | A requested item is inactive or unavailable                             |
@@ -116,10 +116,10 @@ teachers' records.
 ### `POST /api/auth/register`
 
 Creates a user. Open registration is enabled only in the development and test
-profiles. In production this endpoint requires `ADMIN` and the
-`users:create` permission.
+profiles. In production this endpoint requires `ADMIN`, or `STAFF` with the
+`users:create` permission. Staff may create teacher accounts only.
 
-**Auth:** none in dev/test, `ADMIN` in production.
+**Auth:** none in dev/test; `ADMIN` or `STAFF` with `users:create` in production.
 
 Request:
 
@@ -212,8 +212,9 @@ user's `token_version` has changed since it was issued.
 
 **Auth:** `TEACHER`, `STAFF`, or `ADMIN`.
 
-Returns the signed sums from the ledger for the given period. A `TEACHER` may
-only request their own budget; requesting another teacher's id is rejected.
+Returns the signed sums from the ledger for the given period. A `TEACHER` always
+receives their own budget; supplying another `teacherId` is rejected. `STAFF`
+and `ADMIN` must supply `teacherId` to view a teacher's budget.
 
 ```json
 {
@@ -233,7 +234,10 @@ column.
 
 ### `GET /api/teacher/budget/ledger?period=<periodId>`
 
-Paginated ledger entries for the authenticated teacher, newest first.
+Paginated ledger entries for the authenticated teacher, newest first. Supports
+`page` (default `1`) and `perPage` (default `20`, maximum `100`). `STAFF` and
+`ADMIN` must supply `teacherId`; teachers cannot override their own identity.
+The response includes `meta.total`, `meta.page`, and `meta.perPage`.
 
 ## Locations and menus
 
@@ -301,7 +305,10 @@ deactivates normally.
 
 ### `GET /api/locations/:id/menu`
 
-Available items for a location, grouped by category.
+**Auth:** any authenticated user.
+
+Returns active and available items for an active location, ordered by category
+and name. An inactive or missing location returns `404`.
 
 ```json
 {
@@ -325,7 +332,7 @@ Available items for a location, grouped by category.
 
 ### `POST /api/orders`
 
-**Auth:** `TEACHER` (or `STAFF` ordering on their own behalf).
+**Auth:** `TEACHER`.
 
 Request:
 
@@ -339,7 +346,9 @@ Request:
 ```
 
 `idempotencyKey` is client-generated and stable across retries of the same
-checkout attempt.
+checkout attempt. `orderDate` must be a valid business date covered by an active
+budget period. `items` must contain 1–50 lines; quantities are limited to 100
+per line. The supplied `foodLocationId` must match every active, available item.
 
 `201` response:
 
@@ -389,8 +398,9 @@ no order items, and no ledger debit are written.
 **Auth:** `TEACHER`.
 
 The authenticated teacher's own orders. Supports `orderDate`, `from`, `to`,
-`status`, and pagination. A teacher can never retrieve another teacher's
-orders through this endpoint or through any parameter.
+`status`, and pagination (`page`, default `1`; `pageSize`, default `20`, maximum
+`100`). Results are newest first. A teacher can never retrieve another
+teacher's orders through this endpoint or through any parameter.
 
 ### `GET /api/orders/mine/:id`
 
@@ -410,7 +420,8 @@ immediately.
 
 A teacher attempting to cancel after the cutoff receives
 `422 CUTOFF_PASSED`. A staff cancellation is recorded in `audit_logs` with the
-actor, timestamp, and reason.
+actor, timestamp, and required reason. Only confirmed orders can be cancelled;
+repeated cancellation attempts receive `422 INVALID_STATUS_TRANSITION`.
 
 ## Staff operations
 
@@ -418,8 +429,9 @@ All endpoints in this group reject `TEACHER` with `403 FORBIDDEN`.
 
 ### `GET /api/staff/orders?date=YYYY-MM-DD`
 
-All confirmed orders for a date, with `locationId`, `status`, and `teacherId`
-filters plus pagination.
+Orders for a date, with `locationId`, `status`, and `teacherId` filters plus
+pagination (`page`, default `1`; `pageSize`, default `50`, maximum `100`).
+Cancelled orders are excluded unless `status=CANCELLED` is requested.
 
 ```json
 {
@@ -439,8 +451,8 @@ filters plus pagination.
 
 ### `GET /api/staff/orders/grouped?date=YYYY-MM-DD`
 
-Orders grouped by food location, with item-level quantity sums. This is the
-data source behind the collection sheet.
+Non-cancelled orders grouped by food location, with item-level quantity sums.
+This is the data source behind the collection sheet.
 
 ```json
 {
@@ -475,23 +487,34 @@ Nothing is hard-coded or cached from a seed.
 { "status": "COLLECTED", "note": "collected from vendor at 12:40" }
 ```
 
-Allowed transitions: `CONFIRMED → COLLECTED → DELIVERED`, and
-`CONFIRMED → CANCELLED` for a permissioned actor. Any other combination returns
-`422 INVALID_STATUS_TRANSITION`.
+Allowed transitions: `CONFIRMED → COLLECTED → DELIVERED`. Cancelling through
+this endpoint requires `orders:cancel` (or `ADMIN`), a non-empty `note`, and
+creates the refund. Any other combination returns `422 INVALID_STATUS_TRANSITION`.
 
 Each transition appends an `order_status_events` row and an audit entry.
 
 ### `PATCH /api/staff/order-items/:id/status`
 
+**Auth:** `STAFF` or `ADMIN` with `orders:manage_status`.
+
 Item-level collection state, for when parts of an order are collected separately.
+Allowed transitions are `PENDING → COLLECTED → DELIVERED`. Each change appends
+an order status event and audit entry. Request body accepts `status` and an
+optional `note`.
 
 ### `GET /api/staff/reports/daily?date=YYYY-MM-DD`
 
-Totals by location and the daily total, computed from records.
+**Auth:** `STAFF` or `ADMIN`.
+
+Totals and order counts by location plus the daily total, computed from
+non-cancelled order records.
 
 ### `GET /api/staff/reports/budget?period=<periodId>`
 
-Per-teacher allocation, spending, and remaining balance for a period.
+**Auth:** `ADMIN`, or `STAFF` with `budgets:view`.
+
+Per-teacher allocation, spending, refunds, signed adjustments, and remaining
+balance for a period. Amounts come from the ledger.
 
 ## Administration
 
@@ -499,9 +522,18 @@ Every endpoint here requires `ADMIN`, or `STAFF` with the named permission.
 
 ### `POST /api/staff/budget-periods`
 
-Creates a budget period. Rejects overlapping periods with `409`.
+**Auth:** `ADMIN`, or `STAFF` with `budgets:allocate`.
+
+Creates a budget period from `name`, `startsOn`, and `endsOn` business dates.
+Rejects a duplicate name or overlapping dates with `409`.
+When `budget_rollover` is enabled, positive unspent balances from the most
+recent earlier period are added as `adjustment` ledger entries in the new
+period. The response includes `rolledOverTeachers` and
+`rolledOverAmountPaisa`. When disabled, no carryover entries are created.
 
 ### `POST /api/staff/budgets/allocations`
+
+**Auth:** `ADMIN`, or `STAFF` with `budgets:allocate`.
 
 ```json
 { "teacherId": 42, "budgetPeriodId": 12, "amountPaisa": 70000, "reason": "weekly allocation" }
@@ -513,6 +545,8 @@ period.
 
 ### `POST /api/staff/budgets/adjustments`
 
+**Auth:** `ADMIN`, or `STAFF` with `budgets:adjust`.
+
 ```json
 { "teacherId": 42, "budgetPeriodId": 12, "amountPaisa": -5000, "reason": "correction" }
 ```
@@ -521,22 +555,74 @@ period.
 
 ### `GET /api/staff/budgets/ledger?teacherId=<id>&period=<id>`
 
-Full ledger for one teacher and period, with pagination.
+**Auth:** `ADMIN`, or `STAFF` with `budgets:view`.
 
-### `POST /api/staff/menu-items`, `PATCH /api/staff/menu-items/:id`, `DELETE /api/staff/menu-items/:id`
+Ledger entries for one teacher and period, newest first. Supports `page`
+(default `1`) and `perPage` (default `20`, maximum `100`). The response includes
+`meta.total`, `meta.page`, and `meta.perPage`.
 
-Menu administration. Delete is soft deactivation. Historical orders keep their
-price and name snapshots regardless of these changes.
+### `POST /api/staff/menu-items`
+
+**Auth:** `ADMIN`, or `STAFF` with `menu_items:manage`.
+
+Creates a menu item for an active location. `isAvailable` defaults to `true`.
+
+```json
+{
+  "foodLocationId": 1,
+  "name": "Vegetable Meal",
+  "description": "Rice, vegetables, and dal",
+  "category": "lunch",
+  "pricePaisa": 9000,
+  "isAvailable": true
+}
+```
+
+### `PATCH /api/staff/menu-items/:id`
+
+**Auth:** `ADMIN`, or `STAFF` with `menu_items:manage`.
+
+Partial update. Supports `foodLocationId`, `name`, `description`, `category`,
+`pricePaisa`, `isAvailable`, and `isActive`. Setting `isActive` to `false` is
+soft deactivation; setting it to `true` reactivates the item.
+
+### `DELETE /api/staff/menu-items/:id`
+
+**Auth:** `ADMIN`, or `STAFF` with `menu_items:manage`.
+
+Soft-deactivates the item. Historical orders keep their price and name snapshots
+regardless of menu changes.
 
 ### `PATCH /api/staff/users/:id`
 
-Activates or deactivates a user, changes a role or permissions, or forces a
-token revocation by incrementing `token_version`.
+**Auth:** `ADMIN`, or `STAFF` with `users:manage`.
+
+Accepts any of `isActive`, `role`, and `permissions`. `ADMIN` can change all
+three fields. Staff with `users:manage` may only activate or deactivate teacher
+accounts. Every change revokes the user's active sessions and increments
+`token_version`. Changes are audited. The last active administrator cannot be
+deactivated or changed to another role.
+
+```json
+{ "isActive": false }
+```
 
 ### `GET /api/staff/settings`, `PATCH /api/staff/settings/:key`
 
-Reads and updates runtime settings such as `order_cutoff_time` and
-`budget_rollover`.
+**Auth:** `ADMIN`, or `STAFF` with `settings:manage`.
+
+The read endpoint returns the supported settings with their descriptions and
+last update metadata. Update with `{ "value": ... }`. Supported keys and values:
+
+- `order_cutoff_time`: 24-hour `HH:mm` string. Order placement and teacher
+  cancellation evaluate this cutoff using the saved `timezone`.
+- `timezone`: valid IANA timezone name, such as `Asia/Dhaka`.
+- `budget_rollover`: boolean for the budget rollover policy.
+- `ordering_disabled_dates`: array of up to 366 unique `YYYY-MM-DD` dates.
+
+Each update is written to the audit log in the same transaction as the setting.
+Rollover applies when a new budget period is created; changing the setting does
+not recalculate existing periods.
 
 ## System
 

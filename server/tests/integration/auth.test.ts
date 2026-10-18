@@ -597,3 +597,65 @@ function jwtDecode(token: string): {
     sid: string;
   };
 }
+
+describe('POST /api/auth/register in production', () => {
+  it('requires authorized staff and keeps staff creation limited to teacher accounts', async () => {
+    const { hashPassword } = await import('../../src/utils/password.js');
+    await query(
+      `INSERT INTO users (full_name, email, password_hash, role, permissions)
+       VALUES ('Registration Admin', 'registration-admin@example.edu', $1, 'ADMIN', '[]'::jsonb),
+              ('Registration Staff', 'registration-staff@example.edu', $1, 'STAFF', '["users:create"]'::jsonb)`,
+      [await hashPassword('RegistrationPass123!', TEST_BCRYPT_COST)],
+    );
+    const productionApp = createApp({
+      config: { ...config, NODE_ENV: 'production' },
+      logger: silentLogger,
+      db,
+    });
+    const anonymous = await request(productionApp).post('/api/auth/register').send({
+      fullName: 'Anonymous', email: 'anon@example.edu', password: 'NewPassword123!', role: 'TEACHER',
+    });
+    expect(anonymous.status).toBe(401);
+
+    const staffLogin = await request(productionApp).post('/api/auth/login').send({
+      email: 'registration-staff@example.edu', password: 'RegistrationPass123!',
+    });
+    const staffToken = staffLogin.body.data.accessToken as string;
+    const createdTeacher = await request(productionApp)
+      .post('/api/auth/register')
+      .set('Authorization', `Bearer ${staffToken}`)
+      .send({
+        fullName: 'Created Teacher',
+        email: 'created-teacher@example.edu',
+        password: 'NewPassword123!',
+        role: 'TEACHER',
+      });
+    expect(createdTeacher.status).toBe(201);
+    const elevated = await request(productionApp)
+      .post('/api/auth/register')
+      .set('Authorization', `Bearer ${staffToken}`)
+      .send({
+        fullName: 'Created Admin',
+        email: 'created-admin@example.edu',
+        password: 'NewPassword123!',
+        role: 'ADMIN',
+      });
+    expect(elevated.status).toBe(400);
+
+    const adminLogin = await request(productionApp).post('/api/auth/login').send({
+      email: 'registration-admin@example.edu', password: 'RegistrationPass123!',
+    });
+    const adminToken = adminLogin.body.data.accessToken as string;
+    const createdAdmin = await request(productionApp)
+      .post('/api/auth/register')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        fullName: 'Created Admin',
+        email: 'created-admin@example.edu',
+        password: 'NewPassword123!',
+        role: 'ADMIN',
+      });
+    expect(createdAdmin.status).toBe(201);
+    expect(createdAdmin.body.data.role).toBe('ADMIN');
+  });
+});

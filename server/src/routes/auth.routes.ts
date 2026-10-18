@@ -10,7 +10,7 @@ import {
   register,
   type AuthControllerDeps,
 } from '../controllers/auth.controller.js';
-import { requireAuth, requireRole } from '../middleware/auth.js';
+import { requireAuth, requireRole, requireRoleWithPermission } from '../middleware/auth.js';
 
 /**
  * Authentication routes.
@@ -62,7 +62,16 @@ export function createAuthRouter(deps: {
     } satisfies ApiErrorResponse,
   });
 
-  router.post('/register', register(controllerDeps));
+  if (deps.allowSelfRegistration) {
+    router.post('/register', register(controllerDeps));
+  } else {
+    router.post(
+      '/register',
+      requireAuth(auth),
+      requireRoleWithPermission(['STAFF'], 'users:create'),
+      register(controllerDeps),
+    );
+  }
   router.post('/login', loginLimiter, login(controllerDeps));
   router.post('/logout', requireAuth(auth), logout(controllerDeps));
 
