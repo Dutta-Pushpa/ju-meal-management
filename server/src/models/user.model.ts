@@ -73,9 +73,13 @@ export async function findUserById(db: Queryable, id: number): Promise<UserRow |
   return rows[0];
 }
 
-export async function lockUserForManagement(db: Queryable, userId: number): Promise<UserRow | undefined> {
+export async function lockUserForManagement(
+  db: Queryable,
+  userId: number,
+): Promise<UserRow | undefined> {
   const { rows } = await db.query<UserRow>(
-    `SELECT ${USER_COLUMNS} FROM users WHERE id = $1 FOR UPDATE`, [userId],
+    `SELECT ${USER_COLUMNS} FROM users WHERE id = $1 FOR UPDATE`,
+    [userId],
   );
   return rows[0];
 }
@@ -105,7 +109,10 @@ export async function updateManagedUser(
 }
 
 export async function revokeManagedUserSessions(db: Queryable, userId: number): Promise<void> {
-  await db.query(`UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`, [userId]);
+  await db.query(
+    `UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`,
+    [userId],
+  );
 }
 
 /**

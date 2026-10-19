@@ -13,67 +13,81 @@ export interface PlaceOrderInput {
 }
 
 export async function placeOrder(db: Database, input: PlaceOrderInput) {
-  return withTransaction(db, async (tx) => {
-    if (!(await orders.lockTeacher(tx, input.teacherId))) {
-      throw notFound('Active teacher account not found.');
-    }
-
-    const existingId = await orders.findByIdempotencyKey(tx, input.teacherId, input.idempotencyKey);
-    if (existingId !== undefined) {
-      const existing = await loadOrder(tx, existingId);
-      return { ...existing, replayed: true };
-    }
-
-    const rule = await orders.checkOrderingRules(tx, input.orderDate);
-    if (rule.disabled) {
-      throw unprocessable('ORDERING_DISABLED', 'Ordering is disabled for this date.');
-    }
-    if (rule.closed) {
-      throw unprocessable('ORDERING_CLOSED', 'The ordering cutoff for this date has passed.');
-    }
-
-    const periodId = await orders.findPeriodForDate(tx, input.orderDate);
-    if (periodId === undefined) throw notFound('No active budget period covers this order date.');
-
-    const itemIds = [...new Set(input.items.map((item) => item.menuItemId))];
-    const pricedItems = await orders.findPricedItems(tx, itemIds);
-    if (pricedItems.length !== itemIds.length) {
-      throw unprocessable('ITEM_UNAVAILABLE', 'A requested menu item is unavailable.');
-    }
-    const locations = new Set(pricedItems.map((item) => item.food_location_id));
-    if (locations.size !== 1 || !locations.has(input.foodLocationId)) {
-      throw unprocessable('MIXED_LOCATIONS', 'An order must contain items from exactly one location.');
-    }
-
-    const byId = new Map(pricedItems.map((item) => [item.id, item]));
-    const totalPaisa = input.items.reduce((sum, line) => {
-      const item = byId.get(line.menuItemId)!;
-      const lineTotal = item.price_paisa * line.quantity;
-      if (!Number.isSafeInteger(lineTotal) || !Number.isSafeInteger(sum + lineTotal)) {
-        throw unprocessable('BUDGET_INSUFFICIENT', 'The order total exceeds the supported amount.');
+  return withTransaction(
+    db,
+    async (tx) => {
+      if (!(await orders.lockTeacher(tx, input.teacherId))) {
+        throw notFound('Active teacher account not found.');
       }
-      return sum + lineTotal;
-    }, 0);
 
-    const available = await orders.getAvailableBalance(tx, input.teacherId, periodId);
-    if (totalPaisa > available) {
-      throw unprocessable('BUDGET_INSUFFICIENT', 'Order total exceeds the available balance.');
-    }
+      const existingId = await orders.findByIdempotencyKey(
+        tx,
+        input.teacherId,
+        input.idempotencyKey,
+      );
+      if (existingId !== undefined) {
+        const existing = await loadOrder(tx, existingId);
+        return { ...existing, replayed: true };
+      }
 
-    const orderId = await orders.createOrder(tx, {
-      teacherId: input.teacherId,
-      orderDate: input.orderDate,
-      locationId: input.foodLocationId,
-      totalPaisa,
-      idempotencyKey: input.idempotencyKey,
-    });
-    for (const line of input.items) {
-      await orders.createOrderItem(tx, orderId, byId.get(line.menuItemId)!, line);
-    }
-    await orders.createDebit(tx, { teacherId: input.teacherId, periodId, orderId, totalPaisa });
-    await orders.insertConfirmedEvent(tx, orderId, input.teacherId);
-    return { ...(await loadOrder(tx, orderId)), replayed: false };
-  }, 'SERIALIZABLE');
+      const rule = await orders.checkOrderingRules(tx, input.orderDate);
+      if (rule.disabled) {
+        throw unprocessable('ORDERING_DISABLED', 'Ordering is disabled for this date.');
+      }
+      if (rule.closed) {
+        throw unprocessable('ORDERING_CLOSED', 'The ordering cutoff for this date has passed.');
+      }
+
+      const periodId = await orders.findPeriodForDate(tx, input.orderDate);
+      if (periodId === undefined) throw notFound('No active budget period covers this order date.');
+
+      const itemIds = [...new Set(input.items.map((item) => item.menuItemId))];
+      const pricedItems = await orders.findPricedItems(tx, itemIds);
+      if (pricedItems.length !== itemIds.length) {
+        throw unprocessable('ITEM_UNAVAILABLE', 'A requested menu item is unavailable.');
+      }
+      const locations = new Set(pricedItems.map((item) => item.food_location_id));
+      if (locations.size !== 1 || !locations.has(input.foodLocationId)) {
+        throw unprocessable(
+          'MIXED_LOCATIONS',
+          'An order must contain items from exactly one location.',
+        );
+      }
+
+      const byId = new Map(pricedItems.map((item) => [item.id, item]));
+      const totalPaisa = input.items.reduce((sum, line) => {
+        const item = byId.get(line.menuItemId)!;
+        const lineTotal = item.price_paisa * line.quantity;
+        if (!Number.isSafeInteger(lineTotal) || !Number.isSafeInteger(sum + lineTotal)) {
+          throw unprocessable(
+            'BUDGET_INSUFFICIENT',
+            'The order total exceeds the supported amount.',
+          );
+        }
+        return sum + lineTotal;
+      }, 0);
+
+      const available = await orders.getAvailableBalance(tx, input.teacherId, periodId);
+      if (totalPaisa > available) {
+        throw unprocessable('BUDGET_INSUFFICIENT', 'Order total exceeds the available balance.');
+      }
+
+      const orderId = await orders.createOrder(tx, {
+        teacherId: input.teacherId,
+        orderDate: input.orderDate,
+        locationId: input.foodLocationId,
+        totalPaisa,
+        idempotencyKey: input.idempotencyKey,
+      });
+      for (const line of input.items) {
+        await orders.createOrderItem(tx, orderId, byId.get(line.menuItemId)!, line);
+      }
+      await orders.createDebit(tx, { teacherId: input.teacherId, periodId, orderId, totalPaisa });
+      await orders.insertConfirmedEvent(tx, orderId, input.teacherId);
+      return { ...(await loadOrder(tx, orderId)), replayed: false };
+    },
+    'SERIALIZABLE',
+  );
 }
 
 async function loadOrder(db: Parameters<typeof orders.findOrder>[0], id: number) {
@@ -97,9 +111,13 @@ export async function getMyOrders(
     pageSize,
     (page - 1) * pageSize,
   );
-  const items = await orders.findItemsForOrders(db, rows.map((row) => row.id));
+  const items = await orders.findItemsForOrders(
+    db,
+    rows.map((row) => row.id),
+  );
   const grouped = new Map<number, typeof items>();
-  for (const item of items) grouped.set(item.order_id, [...(grouped.get(item.order_id) ?? []), item]);
+  for (const item of items)
+    grouped.set(item.order_id, [...(grouped.get(item.order_id) ?? []), item]);
   return {
     orders: rows.map((row) => ({ row, items: grouped.get(row.id) ?? [] })),
     total,

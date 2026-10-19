@@ -107,7 +107,10 @@ export async function allocateBudget(
     });
   } catch (error) {
     if (isUniqueViolation(error)) {
-      throw conflict('DUPLICATE_ALLOCATION', 'The teacher already has an allocation for this period.');
+      throw conflict(
+        'DUPLICATE_ALLOCATION',
+        'The teacher already has an allocation for this period.',
+      );
     }
     throw error;
   }

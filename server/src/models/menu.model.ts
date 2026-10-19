@@ -64,7 +64,10 @@ export async function findAvailableMenu(
   return { location: locationResult.rows[0], items: itemResult.rows };
 }
 
-export async function findMenuItemById(db: Queryable, id: number): Promise<MenuItemRow | undefined> {
+export async function findMenuItemById(
+  db: Queryable,
+  id: number,
+): Promise<MenuItemRow | undefined> {
   const { rows } = await db.query<MenuItemRow>(
     `SELECT ${MENU_ITEM_COLUMNS} FROM menu_items WHERE id = $1 LIMIT 1`,
     [id],
@@ -123,7 +126,10 @@ export async function updateMenuItem(
   return rows[0];
 }
 
-export async function deactivateMenuItem(db: Queryable, id: number): Promise<MenuItemRow | undefined> {
+export async function deactivateMenuItem(
+  db: Queryable,
+  id: number,
+): Promise<MenuItemRow | undefined> {
   const { rows } = await db.query<MenuItemRow>(
     `UPDATE menu_items SET is_active = false WHERE id = $1
      RETURNING ${MENU_ITEM_COLUMNS}`,

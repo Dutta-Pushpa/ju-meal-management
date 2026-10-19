@@ -613,12 +613,16 @@ describe('POST /api/auth/register in production', () => {
       db,
     });
     const anonymous = await request(productionApp).post('/api/auth/register').send({
-      fullName: 'Anonymous', email: 'anon@example.edu', password: 'NewPassword123!', role: 'TEACHER',
+      fullName: 'Anonymous',
+      email: 'anon@example.edu',
+      password: 'NewPassword123!',
+      role: 'TEACHER',
     });
     expect(anonymous.status).toBe(401);
 
     const staffLogin = await request(productionApp).post('/api/auth/login').send({
-      email: 'registration-staff@example.edu', password: 'RegistrationPass123!',
+      email: 'registration-staff@example.edu',
+      password: 'RegistrationPass123!',
     });
     const staffToken = staffLogin.body.data.accessToken as string;
     const createdTeacher = await request(productionApp)
@@ -643,7 +647,8 @@ describe('POST /api/auth/register in production', () => {
     expect(elevated.status).toBe(400);
 
     const adminLogin = await request(productionApp).post('/api/auth/login').send({
-      email: 'registration-admin@example.edu', password: 'RegistrationPass123!',
+      email: 'registration-admin@example.edu',
+      password: 'RegistrationPass123!',
     });
     const adminToken = adminLogin.body.data.accessToken as string;
     const createdAdmin = await request(productionApp)

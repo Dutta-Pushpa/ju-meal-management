@@ -87,25 +87,25 @@ never included.
 
 ### Defined error codes
 
-| Code                         | Status | Meaning                                                                 |
-| ---------------------------- | ------ | ----------------------------------------------------------------------- |
-| `VALIDATION_ERROR`           | 400    | Request failed schema validation                                        |
-| `UNAUTHORIZED`               | 401    | No token, or the token is invalid or expired                            |
-| `FORBIDDEN`                  | 403    | Role or permission does not allow this action                           |
-| `NOT_FOUND`                  | 404    | Resource does not exist or is not visible to the caller                 |
-| `EMAIL_ALREADY_EXISTS`       | 409    | Registration or update used an existing email                           |
-| `LOCATION_ALREADY_EXISTS`    | 409    | A location with that name already exists                                |
-| `LOCATION_HAS_ACTIVE_ORDERS` | 409    | The location has orders in the current period and cannot be deactivated |
-| `DUPLICATE_ALLOCATION`       | 409    | The teacher already has an allocation for this period                   |
-| `BUDGET_PERIOD_ALREADY_EXISTS` | 409  | The period name is already used or its dates overlap another period       |
-| `ORDERING_CLOSED`            | 422    | The cutoff for this date has passed                                     |
-| `ORDERING_DISABLED`          | 422    | Ordering is disabled for this date, such as a holiday                   |
-| `ITEM_UNAVAILABLE`           | 422    | A requested item is inactive or unavailable                             |
-| `MIXED_LOCATIONS`            | 422    | An order contained items from more than one location                    |
-| `BUDGET_INSUFFICIENT`        | 422    | Order total exceeds the available balance                               |
-| `INVALID_STATUS_TRANSITION`  | 422    | The requested status change is not allowed from the current status      |
-| `CUTOFF_PASSED`              | 422    | Modification attempted after the cutoff                                 |
-| `RATE_LIMITED`               | 429    | Too many requests                                                       |
+| Code                           | Status | Meaning                                                                 |
+| ------------------------------ | ------ | ----------------------------------------------------------------------- |
+| `VALIDATION_ERROR`             | 400    | Request failed schema validation                                        |
+| `UNAUTHORIZED`                 | 401    | No token, or the token is invalid or expired                            |
+| `FORBIDDEN`                    | 403    | Role or permission does not allow this action                           |
+| `NOT_FOUND`                    | 404    | Resource does not exist or is not visible to the caller                 |
+| `EMAIL_ALREADY_EXISTS`         | 409    | Registration or update used an existing email                           |
+| `LOCATION_ALREADY_EXISTS`      | 409    | A location with that name already exists                                |
+| `LOCATION_HAS_ACTIVE_ORDERS`   | 409    | The location has orders in the current period and cannot be deactivated |
+| `DUPLICATE_ALLOCATION`         | 409    | The teacher already has an allocation for this period                   |
+| `BUDGET_PERIOD_ALREADY_EXISTS` | 409    | The period name is already used or its dates overlap another period     |
+| `ORDERING_CLOSED`              | 422    | The cutoff for this date has passed                                     |
+| `ORDERING_DISABLED`            | 422    | Ordering is disabled for this date, such as a holiday                   |
+| `ITEM_UNAVAILABLE`             | 422    | A requested item is inactive or unavailable                             |
+| `MIXED_LOCATIONS`              | 422    | An order contained items from more than one location                    |
+| `BUDGET_INSUFFICIENT`          | 422    | Order total exceeds the available balance                               |
+| `INVALID_STATUS_TRANSITION`    | 422    | The requested status change is not allowed from the current status      |
+| `CUTOFF_PASSED`                | 422    | Modification attempted after the cutoff                                 |
+| `RATE_LIMITED`                 | 429    | Too many requests                                                       |
 
 Returning `404` rather than `403` for a resource belonging to another teacher
 prevents an authenticated user from probing for the existence of other

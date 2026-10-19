@@ -1,6 +1,11 @@
 import { Router } from 'express';
 import type { Database } from '../db/pool.js';
-import { adjust, allocate, createPeriod, getBudgetLedger } from '../controllers/budget-admin.controller.js';
+import {
+  adjust,
+  allocate,
+  createPeriod,
+  getBudgetLedger,
+} from '../controllers/budget-admin.controller.js';
 import { requireAuth, requireRoleWithPermission } from '../middleware/auth.js';
 
 export function createBudgetAdminRouter(deps: { db: Database; jwtSecret: string }): Router {

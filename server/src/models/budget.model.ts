@@ -46,10 +46,9 @@ export async function findActivePeriod(db: Queryable, periodId: number): Promise
 }
 
 export async function budgetPeriodExists(db: Queryable, periodId: number): Promise<boolean> {
-  const { rows } = await db.query<{ id: number }>(
-    `SELECT id FROM budget_periods WHERE id = $1`,
-    [periodId],
-  );
+  const { rows } = await db.query<{ id: number }>(`SELECT id FROM budget_periods WHERE id = $1`, [
+    periodId,
+  ]);
   return rows.length > 0;
 }
 
@@ -82,7 +81,10 @@ export interface RolloverBalance {
   amount_paisa: number;
 }
 
-export async function listRolloverBalances(db: Queryable, startsOn: string): Promise<RolloverBalance[]> {
+export async function listRolloverBalances(
+  db: Queryable,
+  startsOn: string,
+): Promise<RolloverBalance[]> {
   const { rows } = await db.query<RolloverBalance>(
     `SELECT l.teacher_id, source.name AS source_period_name, SUM(l.amount_paisa)::bigint AS amount_paisa
        FROM budget_periods source
@@ -101,7 +103,13 @@ export async function listRolloverBalances(db: Queryable, startsOn: string): Pro
 
 export async function insertAllocation(
   db: Queryable,
-  input: { teacherId: number; periodId: number; amountPaisa: number; actorUserId: number; reason: string },
+  input: {
+    teacherId: number;
+    periodId: number;
+    amountPaisa: number;
+    actorUserId: number;
+    reason: string;
+  },
 ): Promise<{ allocationId: number; entry: BudgetEntryRow }> {
   const allocation = await db.query<{ id: number }>(
     `INSERT INTO budget_allocations (teacher_id, budget_period_id, amount_paisa, created_by)
@@ -120,7 +128,13 @@ export async function insertAllocation(
 
 export async function insertAdjustment(
   db: Queryable,
-  input: { teacherId: number; periodId: number; amountPaisa: number; actorUserId: number; reason: string },
+  input: {
+    teacherId: number;
+    periodId: number;
+    amountPaisa: number;
+    actorUserId: number;
+    reason: string;
+  },
 ): Promise<BudgetEntryRow> {
   const { rows } = await db.query<BudgetEntryRow>(
     `INSERT INTO budget_ledger

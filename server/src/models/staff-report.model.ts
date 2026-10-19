@@ -17,10 +17,7 @@ export interface TeacherBudgetReportRow {
   available_paisa: number;
 }
 
-export async function getDailyTotals(
-  db: Queryable,
-  date: string,
-): Promise<DailyLocationTotal[]> {
+export async function getDailyTotals(db: Queryable, date: string): Promise<DailyLocationTotal[]> {
   const { rows } = await db.query<DailyLocationTotal>(
     `SELECT l.id AS location_id, l.name AS location_name,
             count(o.id)::int AS order_count,

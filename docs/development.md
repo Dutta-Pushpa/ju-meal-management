@@ -146,20 +146,20 @@ database whose name does not end in `_test`.
 
 ## What is covered
 
-| Area          | Cases                                                                                                                                                                                 |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Auth          | Login success and failure, bcrypt storage and cost upgrade on login, 72-byte input rejection, duplicate email, production registration permissions, rate limiting, no user enumeration |
-| Authorisation | Missing, malformed, and expired tokens; `tokenVersion` revocation; teacher refused on staff endpoints; staff refused without the required permission                                  |
+| Area          | Cases                                                                                                                                                                                                                      |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Auth          | Login success and failure, bcrypt storage and cost upgrade on login, 72-byte input rejection, duplicate email, production registration permissions, rate limiting, no user enumeration                                     |
+| Authorisation | Missing, malformed, and expired tokens; `tokenVersion` revocation; teacher refused on staff endpoints; staff refused without the required permission                                                                       |
 | Ordering      | Server-calculated totals, client total ignored, atomic order + items + ledger debit, insufficient balance with no partial writes, invalid quantity, unavailable item, mixed locations, disabled dates, cutoff, idempotency |
-| Cutoff        | One second before, exactly at, and after the cutoff, plus the `Asia/Dhaka` boundary and disabled dates                                                                                |
-| Idempotency   | Repeated `idempotencyKey` creates no duplicate order or debit                                                                                                                         |
-| Concurrency   | Simultaneous orders cannot exceed a balance                                                                                                                                           |
-| Snapshots     | A later menu price change does not alter a historical order                                                                                                                           |
-| Cancellation  | Before-cutoff cancel with refund, refusal after cutoff, cross-teacher refusal, staff override is audited, cancelled order retained                                                    |
-| Staff ops     | Date-based order filters, grouping by location, item quantity sums, location and daily totals, valid and invalid status transitions                                                   |
-| Budget        | Ledger-derived balances, duplicate allocation rejected, adjustments require a reason, configurable rollover of positive prior-period balances                                          |
-| Settings      | Settings permission, value validation, persisted cutoff and audit record                                                                                                                  |
-| Data          | Migrations apply to an empty database, re-runs are a no-op, edited migrations are detected, seed is repeatable, locations are soft deleted                                            |
+| Cutoff        | One second before, exactly at, and after the cutoff, plus the `Asia/Dhaka` boundary and disabled dates                                                                                                                     |
+| Idempotency   | Repeated `idempotencyKey` creates no duplicate order or debit                                                                                                                                                              |
+| Concurrency   | Simultaneous orders cannot exceed a balance                                                                                                                                                                                |
+| Snapshots     | A later menu price change does not alter a historical order                                                                                                                                                                |
+| Cancellation  | Before-cutoff cancel with refund, refusal after cutoff, cross-teacher refusal, staff override is audited, cancelled order retained                                                                                         |
+| Staff ops     | Date-based order filters, grouping by location, item quantity sums, location and daily totals, valid and invalid status transitions                                                                                        |
+| Budget        | Ledger-derived balances, duplicate allocation rejected, adjustments require a reason, configurable rollover of positive prior-period balances                                                                              |
+| Settings      | Settings permission, value validation, persisted cutoff and audit record                                                                                                                                                   |
+| Data          | Migrations apply to an empty database, re-runs are a no-op, edited migrations are detected, seed is repeatable, locations are soft deleted                                                                                 |
 
 ## Postman collection
 

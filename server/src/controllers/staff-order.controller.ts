@@ -3,7 +3,13 @@ import type { Database } from '../db/pool.js';
 import type { AppConfig } from '../config/env.js';
 import { currentUser } from '../middleware/auth.js';
 import { badRequest, forbidden, unprocessable } from '../utils/errors.js';
-import { requireEnum, requireInt, requireObject, requireString, ValidationError } from '../utils/validation.js';
+import {
+  requireEnum,
+  requireInt,
+  requireObject,
+  requireString,
+  ValidationError,
+} from '../utils/validation.js';
 import { cancelOrder as cancelOrderService } from '../services/order.service.js';
 import {
   changeOrderItemStatus,
@@ -74,7 +80,9 @@ export function patchStaffOrderStatus(deps: { db: Database; config: AppConfig })
       actorId: actor.id,
       note,
     });
-    res.status(200).json({ data: { id: orderId, oldStatus: result.oldStatus, status: result.status } });
+    res
+      .status(200)
+      .json({ data: { id: orderId, oldStatus: result.oldStatus, status: result.status } });
   };
 }
 
@@ -142,11 +150,15 @@ function readPathId(req: Request): number {
 function optionalNote(value: unknown): string | null {
   if (value === undefined || value === null) return null;
   if (typeof value !== 'string') {
-    throw new ValidationError([{ field: 'note', issue: 'invalid_type', message: 'note must be a string' }]);
+    throw new ValidationError([
+      { field: 'note', issue: 'invalid_type', message: 'note must be a string' },
+    ]);
   }
   const note = value.trim();
   if (note.length > 500) {
-    throw new ValidationError([{ field: 'note', issue: 'too_big', message: 'note must be at most 500 characters' }]);
+    throw new ValidationError([
+      { field: 'note', issue: 'too_big', message: 'note must be at most 500 characters' },
+    ]);
   }
   return note || null;
 }

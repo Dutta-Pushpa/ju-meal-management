@@ -35,7 +35,10 @@ function readIds(req: Request, actorId: number, role: string) {
   const periodId = readQueryInt(req, 'period', undefined, 1, Number.MAX_SAFE_INTEGER);
   const requestedTeacher = req.query['teacherId'];
   if (role === 'TEACHER') {
-    if (requestedTeacher !== undefined && readQueryInt(req, 'teacherId', undefined, 1, Number.MAX_SAFE_INTEGER) !== actorId) {
+    if (
+      requestedTeacher !== undefined &&
+      readQueryInt(req, 'teacherId', undefined, 1, Number.MAX_SAFE_INTEGER) !== actorId
+    ) {
       throw forbidden('Teachers may only view their own budget.');
     }
     return { teacherId: actorId, periodId };

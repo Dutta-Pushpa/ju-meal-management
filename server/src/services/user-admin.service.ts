@@ -23,10 +23,17 @@ export async function updateUser(
     const current = await users.lockUserForManagement(tx, input.userId);
     if (!current) throw notFound('User not found.');
 
-    if (input.actorRole === 'STAFF' && (current.role !== 'TEACHER' || input.role || input.permissions)) {
+    if (
+      input.actorRole === 'STAFF' &&
+      (current.role !== 'TEACHER' || input.role || input.permissions)
+    ) {
       throw forbidden('Staff with users:manage may only activate or deactivate teacher accounts.');
     }
-    if (input.isActive === undefined && input.role === undefined && input.permissions === undefined) {
+    if (
+      input.isActive === undefined &&
+      input.role === undefined &&
+      input.permissions === undefined
+    ) {
       throw badRequest('At least one user field must be provided.');
     }
 
@@ -36,9 +43,16 @@ export async function updateUser(
     }
     const permissions = role === 'TEACHER' ? [] : (input.permissions ?? current.permissions);
     const isActive = input.isActive ?? current.is_active;
-    if (current.role === 'ADMIN' && current.is_active && (role !== 'ADMIN' || !isActive) &&
-        await users.countOtherActiveAdmins(tx, current.id) === 0) {
-      throw unprocessable('INVALID_STATUS_TRANSITION', 'The last active administrator cannot be removed.');
+    if (
+      current.role === 'ADMIN' &&
+      current.is_active &&
+      (role !== 'ADMIN' || !isActive) &&
+      (await users.countOtherActiveAdmins(tx, current.id)) === 0
+    ) {
+      throw unprocessable(
+        'INVALID_STATUS_TRANSITION',
+        'The last active administrator cannot be removed.',
+      );
     }
 
     const updated = await users.updateManagedUser(tx, current.id, { isActive, role, permissions });
@@ -49,8 +63,16 @@ export async function updateUser(
       entityType: 'user',
       entityId: updated.id,
       metadata: {
-        before: { role: current.role, permissions: current.permissions, isActive: current.is_active },
-        after: { role: updated.role, permissions: updated.permissions, isActive: updated.is_active },
+        before: {
+          role: current.role,
+          permissions: current.permissions,
+          isActive: current.is_active,
+        },
+        after: {
+          role: updated.role,
+          permissions: updated.permissions,
+          isActive: updated.is_active,
+        },
       },
     });
     return updated;

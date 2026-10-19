@@ -41,18 +41,9 @@ export function createApiRouter(deps: {
     '/staff/menu-items',
     createMenuAdminRouter({ db: deps.db, jwtSecret: deps.config.JWT_SECRET }),
   );
-  router.use(
-    '/staff',
-    createBudgetAdminRouter({ db: deps.db, jwtSecret: deps.config.JWT_SECRET }),
-  );
-  router.use(
-    '/staff',
-    createStaffOrderRouter({ db: deps.db, config: deps.config }),
-  );
-  router.use(
-    '/staff',
-    createStaffReportRouter({ db: deps.db, jwtSecret: deps.config.JWT_SECRET }),
-  );
+  router.use('/staff', createBudgetAdminRouter({ db: deps.db, jwtSecret: deps.config.JWT_SECRET }));
+  router.use('/staff', createStaffOrderRouter({ db: deps.db, config: deps.config }));
+  router.use('/staff', createStaffReportRouter({ db: deps.db, jwtSecret: deps.config.JWT_SECRET }));
   router.use('/staff', createSettingsRouter({ db: deps.db, jwtSecret: deps.config.JWT_SECRET }));
   router.use('/staff', createUserAdminRouter({ db: deps.db, jwtSecret: deps.config.JWT_SECRET }));
   router.use(

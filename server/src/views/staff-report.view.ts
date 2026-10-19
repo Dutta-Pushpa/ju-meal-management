@@ -1,7 +1,4 @@
-import type {
-  DailyLocationTotal,
-  TeacherBudgetReportRow,
-} from '../models/staff-report.model.js';
+import type { DailyLocationTotal, TeacherBudgetReportRow } from '../models/staff-report.model.js';
 
 function money(amountPaisa: number) {
   const sign = amountPaisa < 0 ? '-' : '';

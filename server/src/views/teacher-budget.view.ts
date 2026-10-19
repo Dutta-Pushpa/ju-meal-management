@@ -1,7 +1,4 @@
-import type {
-  TeacherBudgetSummaryRow,
-  TeacherLedgerRow,
-} from '../models/teacher-budget.model.js';
+import type { TeacherBudgetSummaryRow, TeacherLedgerRow } from '../models/teacher-budget.model.js';
 
 function money(amountPaisa: number) {
   const sign = amountPaisa < 0 ? '-' : '';

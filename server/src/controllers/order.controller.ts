@@ -2,8 +2,19 @@ import type { Request, Response } from 'express';
 import type { Database } from '../db/pool.js';
 import { currentUser } from '../middleware/auth.js';
 import { badRequest, forbidden } from '../utils/errors.js';
-import { requireEnum, requireInt, requireObject, requireString, ValidationError } from '../utils/validation.js';
-import { cancelOrder as cancelOrderService, getMyOrder, getMyOrders, placeOrder } from '../services/order.service.js';
+import {
+  requireEnum,
+  requireInt,
+  requireObject,
+  requireString,
+  ValidationError,
+} from '../utils/validation.js';
+import {
+  cancelOrder as cancelOrderService,
+  getMyOrder,
+  getMyOrders,
+  placeOrder,
+} from '../services/order.service.js';
 import type { OrderItemInput } from '../models/order.model.js';
 import { presentOrder } from '../views/order.view.js';
 
@@ -32,7 +43,9 @@ export function createOrder(deps: { db: Database }) {
       idempotencyKey: requireString(body['idempotencyKey'], 'idempotencyKey', { maxLength: 200 }),
       items,
     });
-    res.status(result.replayed ? 200 : 201).json({ data: presentOrder(result.order, result.items) });
+    res
+      .status(result.replayed ? 200 : 201)
+      .json({ data: presentOrder(result.order, result.items) });
   };
 }
 
@@ -69,14 +82,18 @@ export function getMyOrderById(db: Database) {
 export function cancelOrder(deps: { db: Database }) {
   return async (req: Request, res: Response): Promise<void> => {
     const actor = currentUser(req);
-    if (actor.role !== 'TEACHER' && actor.role !== 'ADMIN' &&
-      !(actor.role === 'STAFF' && actor.permissions.includes('orders:cancel'))) {
+    if (
+      actor.role !== 'TEACHER' &&
+      actor.role !== 'ADMIN' &&
+      !(actor.role === 'STAFF' && actor.permissions.includes('orders:cancel'))
+    ) {
       throw forbidden('You do not have permission to cancel this order.');
     }
     const body = requireObject(req.body ?? {}, 'body');
-    const reason = body['reason'] === undefined
-      ? undefined
-      : requireString(body['reason'], 'reason', { maxLength: 500 });
+    const reason =
+      body['reason'] === undefined
+        ? undefined
+        : requireString(body['reason'], 'reason', { maxLength: 500 });
     if (actor.role !== 'TEACHER' && reason === undefined) {
       throw badRequest('reason is required for a staff cancellation.');
     }
@@ -105,11 +122,15 @@ function requireBusinessDate(value: unknown, field: string): string {
 function optionalNotes(value: unknown, field: string): string | null {
   if (value === undefined || value === null) return null;
   if (typeof value !== 'string') {
-    throw new ValidationError([{ field, issue: 'invalid_type', message: `${field} must be a string` }]);
+    throw new ValidationError([
+      { field, issue: 'invalid_type', message: `${field} must be a string` },
+    ]);
   }
   const notes = value.trim();
   if (notes.length > 500) {
-    throw new ValidationError([{ field, issue: 'too_big', message: `${field} must be at most 500 characters` }]);
+    throw new ValidationError([
+      { field, issue: 'too_big', message: `${field} must be at most 500 characters` },
+    ]);
   }
   return notes || null;
 }
@@ -126,13 +147,26 @@ function readDateQuery(req: Request, key: string): string | undefined {
   return requireBusinessDate(value, key);
 }
 
-function readStatusQuery(req: Request): 'CONFIRMED' | 'COLLECTED' | 'DELIVERED' | 'CANCELLED' | undefined {
+function readStatusQuery(
+  req: Request,
+): 'CONFIRMED' | 'COLLECTED' | 'DELIVERED' | 'CANCELLED' | undefined {
   const value = req.query['status'];
   if (value === undefined) return undefined;
-  return requireEnum(value, 'status', ['CONFIRMED', 'COLLECTED', 'DELIVERED', 'CANCELLED'] as const);
+  return requireEnum(value, 'status', [
+    'CONFIRMED',
+    'COLLECTED',
+    'DELIVERED',
+    'CANCELLED',
+  ] as const);
 }
 
-function readIntQuery(req: Request, key: string, fallback: number, min: number, max: number): number {
+function readIntQuery(
+  req: Request,
+  key: string,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
   const raw = req.query[key];
   if (raw === undefined) return fallback;
   if (typeof raw !== 'string' || !/^\d+$/.test(raw)) {

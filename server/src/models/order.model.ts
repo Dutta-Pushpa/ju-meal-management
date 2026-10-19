@@ -96,10 +96,7 @@ export async function findPeriodForDate(
   return rows[0]?.id;
 }
 
-export async function findPricedItems(
-  db: Queryable,
-  ids: number[],
-): Promise<PricedMenuItem[]> {
+export async function findPricedItems(db: Queryable, ids: number[]): Promise<PricedMenuItem[]> {
   const { rows } = await db.query<PricedMenuItem>(
     `SELECT m.id, m.food_location_id, m.name, m.price_paisa
        FROM menu_items m
@@ -153,7 +150,15 @@ export async function createOrderItem(
     `INSERT INTO order_items
        (order_id, menu_item_id, item_name_snapshot, unit_price_paisa_snapshot, quantity, line_total_paisa, notes)
      VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-    [orderId, item.id, item.name, item.price_paisa, input.quantity, item.price_paisa * input.quantity, input.notes],
+    [
+      orderId,
+      item.id,
+      item.name,
+      item.price_paisa,
+      input.quantity,
+      item.price_paisa * input.quantity,
+      input.notes,
+    ],
   );
 }
 
@@ -228,7 +233,13 @@ export async function countTeacherOrders(
         AND ($3::date IS NULL OR order_date >= $3::date)
         AND ($4::date IS NULL OR order_date <= $4::date)
         AND ($5::text IS NULL OR status = $5)`,
-    [teacherId, filters.orderDate ?? null, filters.from ?? null, filters.to ?? null, filters.status ?? null],
+    [
+      teacherId,
+      filters.orderDate ?? null,
+      filters.from ?? null,
+      filters.to ?? null,
+      filters.status ?? null,
+    ],
   );
   return rows[0]!.total;
 }
@@ -251,8 +262,15 @@ export async function listTeacherOrders(
         AND ($5::text IS NULL OR o.status = $5)
       ORDER BY o.order_date DESC, o.created_at DESC, o.id DESC
       LIMIT $6 OFFSET $7`,
-    [teacherId, filters.orderDate ?? null, filters.from ?? null, filters.to ?? null,
-      filters.status ?? null, limit, offset],
+    [
+      teacherId,
+      filters.orderDate ?? null,
+      filters.from ?? null,
+      filters.to ?? null,
+      filters.status ?? null,
+      limit,
+      offset,
+    ],
   );
   return rows;
 }
@@ -282,7 +300,10 @@ export async function lockOrderForCancellation(
   return rows[0];
 }
 
-export async function findOrderBudgetPeriod(db: Queryable, orderId: number): Promise<number | undefined> {
+export async function findOrderBudgetPeriod(
+  db: Queryable,
+  orderId: number,
+): Promise<number | undefined> {
   const { rows } = await db.query<{ budget_period_id: number }>(
     `SELECT budget_period_id FROM budget_ledger
       WHERE order_id = $1 AND entry_type = 'debit' LIMIT 1`,
@@ -301,13 +322,27 @@ export async function cancelOrder(db: Queryable, orderId: number): Promise<void>
 
 export async function insertRefund(
   db: Queryable,
-  input: { teacherId: number; periodId: number; orderId: number; amountPaisa: number; reason: string; actorId: number },
+  input: {
+    teacherId: number;
+    periodId: number;
+    orderId: number;
+    amountPaisa: number;
+    reason: string;
+    actorId: number;
+  },
 ): Promise<void> {
   await db.query(
     `INSERT INTO budget_ledger
        (teacher_id, budget_period_id, entry_type, amount_paisa, order_id, reason, created_by)
      VALUES ($1, $2, 'refund', $3, $4, $5, $6)`,
-    [input.teacherId, input.periodId, input.amountPaisa, input.orderId, input.reason, input.actorId],
+    [
+      input.teacherId,
+      input.periodId,
+      input.amountPaisa,
+      input.orderId,
+      input.reason,
+      input.actorId,
+    ],
   );
 }
 

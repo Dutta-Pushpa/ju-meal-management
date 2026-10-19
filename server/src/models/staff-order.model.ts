@@ -80,14 +80,18 @@ export async function insertStatusEvent(
     `INSERT INTO order_status_events
        (order_id, order_item_id, old_status, new_status, changed_by, note)
      VALUES ($1, $2, $3, $4, $5, $6)`,
-    [input.orderId, input.itemId ?? null, input.oldStatus, input.newStatus, input.actorId, input.note],
+    [
+      input.orderId,
+      input.itemId ?? null,
+      input.oldStatus,
+      input.newStatus,
+      input.actorId,
+      input.note,
+    ],
   );
 }
 
-export async function countStaffOrders(
-  db: Queryable,
-  filters: StaffOrderFilters,
-): Promise<number> {
+export async function countStaffOrders(db: Queryable, filters: StaffOrderFilters): Promise<number> {
   const { rows } = await db.query<{ total: number }>(
     `SELECT count(*)::int AS total
        FROM orders o
@@ -122,8 +126,14 @@ export async function listStaffOrders(
         AND ($4::bigint IS NULL OR o.teacher_id = $4)
       ORDER BY l.name, u.full_name, o.created_at, o.id
       LIMIT $5 OFFSET $6`,
-    [filters.date, filters.locationId ?? null, filters.status ?? null, filters.teacherId ?? null,
-      pageSize, offset],
+    [
+      filters.date,
+      filters.locationId ?? null,
+      filters.status ?? null,
+      filters.teacherId ?? null,
+      pageSize,
+      offset,
+    ],
   );
   return rows;
 }

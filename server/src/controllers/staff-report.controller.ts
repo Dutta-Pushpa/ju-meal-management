@@ -19,7 +19,10 @@ export function budgetReport(db: Database) {
     if (typeof rawPeriod !== 'string' || !/^\d+$/.test(rawPeriod)) {
       throw badRequest('period must be a positive integer.');
     }
-    const periodId = requireInt(Number(rawPeriod), 'period', { min: 1, max: Number.MAX_SAFE_INTEGER });
+    const periodId = requireInt(Number(rawPeriod), 'period', {
+      min: 1,
+      max: Number.MAX_SAFE_INTEGER,
+    });
     res.status(200).json(presentBudgetReport(await getBudgetReport(db, periodId)));
   };
 }
