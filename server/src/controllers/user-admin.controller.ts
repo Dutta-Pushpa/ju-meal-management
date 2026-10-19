@@ -11,7 +11,9 @@ export function patchUser(db: Database) {
   return async (req: Request, res: Response): Promise<void> => {
     const actor = currentUser(req);
     const rawId = req.params['id'];
-    if (!rawId || !/^\d+$/.test(rawId)) throw badRequest('id must be a positive integer.');
+    if (typeof rawId !== 'string' || !/^\d+$/.test(rawId)) {
+      throw badRequest('id must be a positive integer.');
+    }
     const userId = requireInt(Number(rawId), 'id', { min: 1 });
     const body = requireObject(req.body ?? {}, 'body');
     const allowed = new Set(['isActive', 'role', 'permissions']);

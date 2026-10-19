@@ -12,7 +12,7 @@ export async function getLocationMenu(db: Database, locationId: number) {
     throw notFound('No active location with that id.');
   }
 
-  return result;
+  return { location: result.location, items: result.items };
 }
 
 export async function createMenuItem(

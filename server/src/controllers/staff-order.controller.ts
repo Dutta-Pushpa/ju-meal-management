@@ -143,7 +143,9 @@ function readIntQuery(req: Request, key: string, fallback: number, max: number):
 
 function readPathId(req: Request): number {
   const raw = req.params['id'];
-  if (!raw || !/^\d+$/.test(raw)) throw badRequest('id must be a positive integer.');
+  if (typeof raw !== 'string' || !/^\d+$/.test(raw)) {
+    throw badRequest('id must be a positive integer.');
+  }
   return requireInt(Number(raw), 'id', { min: 1 });
 }
 

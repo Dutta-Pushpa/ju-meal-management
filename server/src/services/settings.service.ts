@@ -29,6 +29,7 @@ export async function updateSetting(
       actorUserId: actorId,
       action: 'setting.updated',
       entityType: 'app_setting',
+      entityId: undefined,
       metadata: { key, value },
     });
     return updated;
