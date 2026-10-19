@@ -1,7 +1,8 @@
 import { Pool } from 'pg';
-// Applies the process-wide int8 parser. Imported for its side effect, so this
-// must stay above any use of pg in this file.
+// Applies the process-wide int8 and date parsers. Imported for their side
+// effects, so these must stay above any use of pg in this file.
 import './int8.js';
+import './date.js';
 import type { AppConfig } from '../config/env.js';
 import type { Logger } from '../utils/logger.js';
 

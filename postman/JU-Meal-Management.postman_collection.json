@@ -1,0 +1,2262 @@
+{
+  "info": {
+    "_postman_id": "c1a7e2f0-9b3d-4c6e-8a1f-2d4b6c8e0f1a",
+    "name": "JU Meal Management API",
+    "description": "End-to-end contract tests for the JU Meal Management API.\n\nRun it with `npm run test:api` against a migrated and seeded database. The runner supplies the demo credentials; see docs/development.md. Requests run in order because later folders depend on tokens, ids, and fixtures captured by earlier ones.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "00 · System",
+      "item": [
+        {
+          "name": "Health",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('the API is healthy', () => pm.expect(b.data.status).to.eql('ok'));",
+                  "pm.test('the database is reachable', () => pm.expect(b.data.database).to.eql('up'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "01 · Authentication",
+      "item": [
+        {
+          "name": "Login as admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('returns a bearer token', () => {",
+                  "  pm.expect(b.data.accessToken).to.be.a('string').and.not.empty;",
+                  "  pm.expect(b.data.tokenType).to.eql('Bearer');",
+                  "});",
+                  "pm.test('the account is an administrator', () => pm.expect(b.data.user.role).to.eql('ADMIN'));",
+                  "pm.environment.set('adminToken', b.data.accessToken);",
+                  "pm.environment.set('adminUserId', String(b.data.user.id));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "Login as staff",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('the account is staff', () => pm.expect(b.data.user.role).to.eql('STAFF'));",
+                  "pm.environment.set('staffToken', b.data.accessToken);",
+                  "pm.environment.set('staffUserId', String(b.data.user.id));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{staffEmail}}\",\n  \"password\": \"{{staffPassword}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "Login as teacher",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('the account is a teacher', () => pm.expect(b.data.user.role).to.eql('TEACHER'));",
+                  "pm.environment.set('teacherToken', b.data.accessToken);",
+                  "pm.environment.set('teacherUserId', String(b.data.user.id));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{teacherEmail}}\",\n  \"password\": \"{{teacherPassword}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "Current user",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('returns the signed-in administrator', () => {",
+                  "  pm.expect(b.data.email).to.eql(pm.environment.get('adminEmail'));",
+                  "  pm.expect(b.data.role).to.eql('ADMIN');",
+                  "});",
+                  "pm.test('never exposes a password hash', () => {",
+                  "  pm.expect(b.data).to.not.have.property('passwordHash');",
+                  "  pm.expect(b.data).to.not.have.property('password_hash');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "me"]
+            }
+          }
+        },
+        {
+          "name": "Register a teacher",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.variables.set('newUserEmail', `newman${Date.now()}@example.edu`);"]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 201', () => pm.response.to.have.status(201));",
+                  "const b = pm.response.json();",
+                  "pm.test('returns the created account', () => {",
+                  "  pm.expect(b.data.email).to.eql(pm.variables.get('newUserEmail'));",
+                  "  pm.expect(b.data.role).to.eql('TEACHER');",
+                  "  pm.expect(b.data.isActive).to.eql(true);",
+                  "});",
+                  "pm.environment.set('newUserId', String(b.data.id));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Newman Teacher\",\n  \"email\": \"{{newUserEmail}}\",\n  \"password\": \"NewmanPass123!\",\n  \"role\": \"TEACHER\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "register"]
+            }
+          }
+        },
+        {
+          "name": "Duplicate email is rejected",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 409', () => pm.response.to.have.status(409));",
+                  "pm.test('reports a duplicate email', () => pm.expect(pm.response.json().error.code).to.eql('EMAIL_ALREADY_EXISTS'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Newman Teacher\",\n  \"email\": \"{{newUserEmail}}\",\n  \"password\": \"NewmanPass123!\",\n  \"role\": \"TEACHER\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "register"]
+            }
+          }
+        },
+        {
+          "name": "Short password is rejected",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('shortPasswordEmail', `short${Date.now()}@example.edu`);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 400', () => pm.response.to.have.status(400));",
+                  "const e = pm.response.json().error;",
+                  "pm.test('reports a validation failure', () => {",
+                  "  pm.expect(e.code).to.eql('VALIDATION_ERROR');",
+                  "  pm.expect(e.details).to.be.an('array').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Short Password\",\n  \"email\": \"{{shortPasswordEmail}}\",\n  \"password\": \"short\",\n  \"role\": \"TEACHER\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "register"]
+            }
+          }
+        },
+        {
+          "name": "Wrong password is rejected",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('does not reveal whether the account exists', () => pm.expect(pm.response.json().error.code).to.eql('UNAUTHORIZED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{teacherEmail}}\",\n  \"password\": \"DefinitelyWrong123!\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 · Locations",
+      "item": [
+        {
+          "name": "List locations",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('returns a list', () => pm.expect(b.data).to.be.an('array').and.not.empty);",
+                  "const botTola = b.data.find((location) => location.name === 'Bot Tola');",
+                  "pm.test('includes the seeded Bot Tola location', () => pm.expect(botTola).to.be.an('object'));",
+                  "pm.environment.set('locationId', String((botTola ?? b.data[0]).id));",
+                  "pm.test('reports a total', () => pm.expect(b.meta.total).to.be.a('number'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{teacherToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/locations",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "locations"]
+            }
+          }
+        },
+        {
+          "name": "Get one location",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('returns the requested location', () => pm.expect(String(b.data.id)).to.eql(pm.environment.get('locationId')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{teacherToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/locations/{{locationId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "locations", "{{locationId}}"]
+            }
+          }
+        },
+        {
+          "name": "Missing location is 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 404', () => pm.response.to.have.status(404));",
+                  "pm.test('reports not found', () => pm.expect(pm.response.json().error.code).to.eql('NOT_FOUND'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{teacherToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/locations/999999",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "locations", "999999"]
+            }
+          }
+        },
+        {
+          "name": "Read a location menu",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('returns the location and its items', () => {",
+                  "  pm.expect(b.data.location).to.be.an('object');",
+                  "  pm.expect(b.data.items).to.be.an('array').and.not.empty;",
+                  "});",
+                  "const available = b.data.items.filter((item) => item.isAvailable);",
+                  "pm.test('has at least one available item', () => pm.expect(available.length).to.be.above(0));",
+                  "pm.test('returns prices in paisa', () => pm.expect(available[0].price.amountPaisa).to.be.a('number'));",
+                  "pm.environment.set('menuItemId', String(available[0].id));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{teacherToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/locations/{{locationId}}/menu",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "locations", "{{locationId}}", "menu"]
+            }
+          }
+        },
+        {
+          "name": "Create a location",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.variables.set('locationName', 'Newman Location ' + Date.now());"]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 201', () => pm.response.to.have.status(201));",
+                  "const b = pm.response.json();",
+                  "pm.test('returns the created location', () => {",
+                  "  pm.expect(b.data.name).to.eql(pm.variables.get('locationName'));",
+                  "  pm.expect(b.data.isActive).to.eql(true);",
+                  "});",
+                  "pm.environment.set('createdLocationId', String(b.data.id));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{locationName}}\",\n  \"nameBn\": \"নিউম্যান\",\n  \"description\": \"Created by the API collection\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/locations",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "locations"]
+            }
+          }
+        },
+        {
+          "name": "Duplicate location name is rejected",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 409', () => pm.response.to.have.status(409));",
+                  "pm.test('reports a duplicate location', () => pm.expect(pm.response.json().error.code).to.eql('LOCATION_ALREADY_EXISTS'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{locationName}}\",\n  \"description\": \"Duplicate\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/locations",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "locations"]
+            }
+          }
+        },
+        {
+          "name": "Update a location",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('applies the change', () => pm.expect(pm.response.json().data.description).to.eql('Updated by Newman'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Updated by Newman\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/locations/{{createdLocationId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "locations", "{{createdLocationId}}"]
+            }
+          }
+        },
+        {
+          "name": "Deactivate a location",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('the location is now inactive', () => pm.expect(pm.response.json().data.isActive).to.eql(false));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/locations/{{createdLocationId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "locations", "{{createdLocationId}}"]
+            }
+          }
+        },
+        {
+          "name": "Deactivated location is hidden",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 404', () => pm.response.to.have.status(404));",
+                  "pm.test('reports not found', () => pm.expect(pm.response.json().error.code).to.eql('NOT_FOUND'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/locations/{{createdLocationId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "locations", "{{createdLocationId}}"]
+            }
+          }
+        },
+        {
+          "name": "A teacher cannot create a location",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 403', () => pm.response.to.have.status(403));",
+                  "pm.test('reports forbidden', () => pm.expect(pm.response.json().error.code).to.eql('FORBIDDEN'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{teacherToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Teacher Attempt\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/locations",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "locations"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 · Menu administration",
+      "item": [
+        {
+          "name": "Create a menu item",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.variables.set('menuItemName', 'Newman Item ' + Date.now());"]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 201', () => pm.response.to.have.status(201));",
+                  "const b = pm.response.json();",
+                  "pm.test('returns the created item', () => {",
+                  "  pm.expect(b.data.name).to.eql(pm.variables.get('menuItemName'));",
+                  "  pm.expect(b.data.price.amountPaisa).to.eql(9500);",
+                  "  pm.expect(b.data.isAvailable).to.eql(true);",
+                  "});",
+                  "pm.environment.set('createdMenuItemId', String(b.data.id));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"foodLocationId\": {{locationId}},\n  \"name\": \"{{menuItemName}}\",\n  \"description\": \"Created by the API collection\",\n  \"category\": \"lunch\",\n  \"pricePaisa\": 9500,\n  \"isAvailable\": true\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/staff/menu-items",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "staff", "menu-items"]
+            }
+          }
+        },
+        {
+          "name": "Update the menu item",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('applies both changes', () => {",
+                  "  pm.expect(b.data.price.amountPaisa).to.eql(9900);",
+                  "  pm.expect(b.data.isAvailable).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pricePaisa\": 9900,\n  \"isAvailable\": false\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/staff/menu-items/{{createdMenuItemId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "staff", "menu-items", "{{createdMenuItemId}}"]
+            }
+          }
+        },
+        {
+          "name": "Deactivate the menu item",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('the item is now inactive', () => pm.expect(pm.response.json().data.isActive).to.eql(false));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/staff/menu-items/{{createdMenuItemId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "staff", "menu-items", "{{createdMenuItemId}}"]
+            }
+          }
+        },
+        {
+          "name": "A teacher cannot manage the menu",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 403', () => pm.response.to.have.status(403));",
+                  "pm.test('reports forbidden', () => pm.expect(pm.response.json().error.code).to.eql('FORBIDDEN'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{teacherToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"foodLocationId\": 1,\n  \"name\": \"Teacher Attempt\",\n  \"pricePaisa\": 100\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/staff/menu-items",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "staff", "menu-items"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 · Budget administration",
+      "item": [
+        {
+          "name": "Create a budget period",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const DAY = 86400000;",
+                  "const offsetDays = 20000 + (Math.floor(Date.now() / 1000) % 10000) * 30;",
+                  "const start = new Date(Date.UTC(2026, 0, 1) + offsetDays * DAY);",
+                  "const end = new Date(start.getTime() + 6 * DAY);",
+                  "const order = new Date(start.getTime() + 2 * DAY);",
+                  "const iso = (date) => date.toISOString().slice(0, 10);",
+                  "pm.variables.set('periodStartsOn', iso(start));",
+                  "pm.variables.set('periodEndsOn', iso(end));",
+                  "pm.variables.set('orderDate', iso(order));",
+                  "pm.variables.set('periodName', 'Newman ' + iso(start));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 201', () => pm.response.to.have.status(201));",
+                  "const b = pm.response.json();",
+                  "pm.test('returns the created period', () => {",
+                  "  pm.expect(b.data.startsOn).to.eql(pm.variables.get('periodStartsOn'));",
+                  "  pm.expect(b.data.endsOn).to.eql(pm.variables.get('periodEndsOn'));",
+                  "});",
+                  "pm.environment.set('periodId', String(b.data.id));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{periodName}}\",\n  \"startsOn\": \"{{periodStartsOn}}\",\n  \"endsOn\": \"{{periodEndsOn}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/staff/budget-periods",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "staff", "budget-periods"]
+            }
+          }
+        },
+        {
+          "name": "Allocate budget to the teacher",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 201', () => pm.response.to.have.status(201));",
+                  "const b = pm.response.json();",
+                  "pm.test('records the allocation and its ledger entry', () => {",
+                  "  pm.expect(b.data.allocation.amount.amountPaisa).to.eql(500000);",
+                  "  pm.expect(b.data.ledgerEntry.entryType).to.eql('allocation');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"teacherId\": {{teacherUserId}},\n  \"budgetPeriodId\": {{periodId}},\n  \"amountPaisa\": 500000,\n  \"reason\": \"Newman allocation\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/staff/budgets/allocations",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "staff", "budgets", "allocations"]
+            }
+          }
+        },
+        {
+          "name": "Duplicate allocation is rejected",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 409', () => pm.response.to.have.status(409));",
+                  "pm.test('reports a duplicate allocation', () => pm.expect(pm.response.json().error.code).to.eql('DUPLICATE_ALLOCATION'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"teacherId\": {{teacherUserId}},\n  \"budgetPeriodId\": {{periodId}},\n  \"amountPaisa\": 500000,\n  \"reason\": \"Duplicate\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/staff/budgets/allocations",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "staff", "budgets", "allocations"]
+            }
+          }
+        },
+        {
+          "name": "Adjust the budget",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 201', () => pm.response.to.have.status(201));",
+                  "const b = pm.response.json();",
+                  "pm.test('records a signed adjustment', () => {",
+                  "  pm.expect(b.data.entryType).to.eql('adjustment');",
+                  "  pm.expect(b.data.amount.amountPaisa).to.eql(-1000);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"teacherId\": {{teacherUserId}},\n  \"budgetPeriodId\": {{periodId}},\n  \"amountPaisa\": -1000,\n  \"reason\": \"Newman adjustment\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/staff/budgets/adjustments",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "staff", "budgets", "adjustments"]
+            }
+          }
+        },
+        {
+          "name": "Read the admin budget ledger",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('returns the allocation and the adjustment', () => {",
+                  "  pm.expect(b.data).to.be.an('array').with.lengthOf.at.least(2);",
+                  "  pm.expect(b.meta.total).to.be.at.least(2);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/staff/budgets/ledger?teacherId={{teacherUserId}}&period={{periodId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "staff", "budgets", "ledger"],
+              "query": [
+                { "key": "teacherId", "value": "{{teacherUserId}}" },
+                { "key": "period", "value": "{{periodId}}" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Staff without budgets:allocate cannot allocate",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 403', () => pm.response.to.have.status(403));",
+                  "pm.test('reports forbidden', () => pm.expect(pm.response.json().error.code).to.eql('FORBIDDEN'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{staffToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"teacherId\": {{teacherUserId}},\n  \"budgetPeriodId\": {{periodId}},\n  \"amountPaisa\": 100,\n  \"reason\": \"Not allowed\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/staff/budgets/allocations",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "staff", "budgets", "allocations"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 · Teacher budget",
+      "item": [
+        {
+          "name": "Read own budget",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data;",
+                  "pm.test('shows the allocation', () => pm.expect(d.allocated.amountPaisa).to.eql(500000));",
+                  "const expected = d.allocated.amountPaisa - d.spent.amountPaisa + d.refunded.amountPaisa + d.adjusted.amountPaisa;",
+                  "pm.test('available is the signed ledger sum', () => pm.expect(d.available.amountPaisa).to.eql(expected));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{teacherToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/teacher/budget?period={{periodId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "teacher", "budget"],
+              "query": [{ "key": "period", "value": "{{periodId}}" }]
+            }
+          }
+        },
+        {
+          "name": "Read own ledger",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('returns the allocation and adjustment', () => {",
+                  "  pm.expect(b.data).to.be.an('array').with.lengthOf.at.least(2);",
+                  "  pm.expect(b.meta.total).to.be.at.least(2);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{teacherToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/teacher/budget/ledger?period={{periodId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "teacher", "budget", "ledger"],
+              "query": [{ "key": "period", "value": "{{periodId}}" }]
+            }
+          }
+        },
+        {
+          "name": "A teacher cannot read another budget",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 403', () => pm.response.to.have.status(403));",
+                  "pm.test('reports forbidden', () => pm.expect(pm.response.json().error.code).to.eql('FORBIDDEN'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{teacherToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/teacher/budget?period={{periodId}}&teacherId=4",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "teacher", "budget"],
+              "query": [
+                { "key": "period", "value": "{{periodId}}" },
+                { "key": "teacherId", "value": "4" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 · Orders",
+      "item": [
+        {
+          "name": "Place an order",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.variables.set('idempotencyKey', 'newman-order-' + Date.now());"]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 201', () => pm.response.to.have.status(201));",
+                  "const b = pm.response.json();",
+                  "const line = b.data.items[0];",
+                  "pm.test('returns a confirmed order', () => {",
+                  "  pm.expect(b.data.status).to.eql('CONFIRMED');",
+                  "  pm.expect(line.quantity).to.eql(2);",
+                  "});",
+                  "pm.test('computes the total from the line items', () => pm.expect(b.data.total.amountPaisa).to.eql(line.unitPrice.amountPaisa * line.quantity));",
+                  "pm.environment.set('orderId', String(b.data.id));",
+                  "pm.environment.set('orderItemId', String(line.id));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{teacherToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderDate\": \"{{orderDate}}\",\n  \"foodLocationId\": {{locationId}},\n  \"idempotencyKey\": \"{{idempotencyKey}}\",\n  \"items\": [{ \"menuItemId\": {{menuItemId}}, \"quantity\": 2, \"notes\": \"Newman order\" }]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "orders"]
+            }
+          }
+        },
+        {
+          "name": "Replaying the same key returns the same order",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200, not 201', () => pm.response.to.have.status(200));",
+                  "pm.test('returns the original order', () => pm.expect(String(pm.response.json().data.id)).to.eql(pm.environment.get('orderId')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{teacherToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderDate\": \"{{orderDate}}\",\n  \"foodLocationId\": {{locationId}},\n  \"idempotencyKey\": \"{{idempotencyKey}}\",\n  \"items\": [{ \"menuItemId\": {{menuItemId}}, \"quantity\": 2, \"notes\": \"Newman order\" }]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "orders"]
+            }
+          }
+        },
+        {
+          "name": "List my orders",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('includes the order just placed', () => pm.expect(b.data.map((order) => String(order.id))).to.include(pm.environment.get('orderId')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{teacherToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/mine?orderDate={{orderDate}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "orders", "mine"],
+              "query": [{ "key": "orderDate", "value": "{{orderDate}}" }]
+            }
+          }
+        },
+        {
+          "name": "Read my order",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('returns the requested order', () => pm.expect(String(pm.response.json().data.id)).to.eql(pm.environment.get('orderId')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{teacherToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/mine/{{orderId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "orders", "mine", "{{orderId}}"]
+            }
+          }
+        },
+        {
+          "name": "Order after the cutoff is rejected",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.variables.set('closedKey', 'newman-closed-' + Date.now());"]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 422', () => pm.response.to.have.status(422));",
+                  "pm.test('reports a closed ordering window', () => pm.expect(pm.response.json().error.code).to.eql('ORDERING_CLOSED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{teacherToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderDate\": \"2020-01-01\",\n  \"foodLocationId\": {{locationId}},\n  \"idempotencyKey\": \"{{closedKey}}\",\n  \"items\": [{ \"menuItemId\": {{menuItemId}}, \"quantity\": 1 }]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "orders"]
+            }
+          }
+        },
+        {
+          "name": "Order over the balance is rejected",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.variables.set('overBudgetKey', 'newman-over-' + Date.now());"]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 422', () => pm.response.to.have.status(422));",
+                  "pm.test('reports an insufficient budget', () => pm.expect(pm.response.json().error.code).to.eql('BUDGET_INSUFFICIENT'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{teacherToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderDate\": \"{{orderDate}}\",\n  \"foodLocationId\": {{locationId}},\n  \"idempotencyKey\": \"{{overBudgetKey}}\",\n  \"items\": [{ \"menuItemId\": {{menuItemId}}, \"quantity\": 100 }]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "orders"]
+            }
+          }
+        },
+        {
+          "name": "An unavailable item is rejected",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.variables.set('unavailableKey', 'newman-unavailable-' + Date.now());"]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 422', () => pm.response.to.have.status(422));",
+                  "pm.test('reports an unavailable item', () => pm.expect(pm.response.json().error.code).to.eql('ITEM_UNAVAILABLE'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{teacherToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderDate\": \"{{orderDate}}\",\n  \"foodLocationId\": 2,\n  \"idempotencyKey\": \"{{unavailableKey}}\",\n  \"items\": [{ \"menuItemId\": 10, \"quantity\": 1 }]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "orders"]
+            }
+          }
+        },
+        {
+          "name": "Mixed locations are rejected",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.variables.set('mixedKey', 'newman-mixed-' + Date.now());"]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 422', () => pm.response.to.have.status(422));",
+                  "pm.test('reports mixed locations', () => pm.expect(pm.response.json().error.code).to.eql('MIXED_LOCATIONS'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{teacherToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderDate\": \"{{orderDate}}\",\n  \"foodLocationId\": {{locationId}},\n  \"idempotencyKey\": \"{{mixedKey}}\",\n  \"items\": [\n    { \"menuItemId\": 1, \"quantity\": 1 },\n    { \"menuItemId\": 6, \"quantity\": 1 }\n  ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "orders"]
+            }
+          }
+        },
+        {
+          "name": "Place a second order",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.variables.set('secondIdempotencyKey', 'newman-second-' + Date.now());"]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 201', () => pm.response.to.have.status(201));",
+                  "pm.environment.set('secondOrderId', String(pm.response.json().data.id));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{teacherToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderDate\": \"{{orderDate}}\",\n  \"foodLocationId\": {{locationId}},\n  \"idempotencyKey\": \"{{secondIdempotencyKey}}\",\n  \"items\": [{ \"menuItemId\": {{menuItemId}}, \"quantity\": 1 }]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "orders"]
+            }
+          }
+        },
+        {
+          "name": "Cancel my order before the cutoff",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('the order is cancelled', () => pm.expect(pm.response.json().data.status).to.eql('CANCELLED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{teacherToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"changed my mind\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{secondOrderId}}/cancel",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "orders", "{{secondOrderId}}", "cancel"]
+            }
+          }
+        },
+        {
+          "name": "Cancelling twice is rejected",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 422', () => pm.response.to.have.status(422));",
+                  "pm.test('reports an invalid transition', () => pm.expect(pm.response.json().error.code).to.eql('INVALID_STATUS_TRANSITION'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{teacherToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"again\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{secondOrderId}}/cancel",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "orders", "{{secondOrderId}}", "cancel"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 · Staff operations",
+      "item": [
+        {
+          "name": "List orders for a date",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('includes the order placed by the teacher', () => pm.expect(b.data.map((order) => String(order.id))).to.include(pm.environment.get('orderId')));",
+                  "pm.test('uses the documented page size', () => pm.expect(b.meta.pageSize).to.eql(50));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{staffToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/staff/orders?date={{orderDate}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "staff", "orders"],
+              "query": [{ "key": "date", "value": "{{orderDate}}" }]
+            }
+          }
+        },
+        {
+          "name": "Grouped orders for a date",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data;",
+                  "pm.test('returns the requested date', () => pm.expect(d.date).to.eql(pm.variables.get('orderDate')));",
+                  "pm.test('returns a daily total', () => pm.expect(d.dailyTotal.amountPaisa).to.be.a('number'));",
+                  "pm.test('groups at least one location', () => pm.expect(d.locations).to.be.an('array').and.not.empty);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{staffToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/staff/orders/grouped?date={{orderDate}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "staff", "orders", "grouped"],
+              "query": [{ "key": "date", "value": "{{orderDate}}" }]
+            }
+          }
+        },
+        {
+          "name": "Move the order to collected",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data;",
+                  "pm.test('applies the transition', () => {",
+                  "  pm.expect(d.oldStatus).to.eql('CONFIRMED');",
+                  "  pm.expect(d.status).to.eql('COLLECTED');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{staffToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"COLLECTED\",\n  \"note\": \"collected by staff\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/staff/orders/{{orderId}}/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "staff", "orders", "{{orderId}}", "status"]
+            }
+          }
+        },
+        {
+          "name": "Move the order to delivered",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('applies the transition', () => pm.expect(pm.response.json().data.status).to.eql('DELIVERED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{staffToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"DELIVERED\",\n  \"note\": \"delivered\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/staff/orders/{{orderId}}/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "staff", "orders", "{{orderId}}", "status"]
+            }
+          }
+        },
+        {
+          "name": "Backwards order transition is rejected",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 422', () => pm.response.to.have.status(422));",
+                  "pm.test('reports an invalid transition', () => pm.expect(pm.response.json().error.code).to.eql('INVALID_STATUS_TRANSITION'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{staffToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"CONFIRMED\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/staff/orders/{{orderId}}/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "staff", "orders", "{{orderId}}", "status"]
+            }
+          }
+        },
+        {
+          "name": "Collect an order item",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data;",
+                  "pm.test('applies the item transition', () => {",
+                  "  pm.expect(d.oldStatus).to.eql('PENDING');",
+                  "  pm.expect(d.status).to.eql('COLLECTED');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{staffToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"COLLECTED\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/staff/order-items/{{orderItemId}}/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "staff", "order-items", "{{orderItemId}}", "status"]
+            }
+          }
+        },
+        {
+          "name": "Repeated item transition is rejected",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 422', () => pm.response.to.have.status(422));",
+                  "pm.test('reports an invalid transition', () => pm.expect(pm.response.json().error.code).to.eql('INVALID_STATUS_TRANSITION'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{staffToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"COLLECTED\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/staff/order-items/{{orderItemId}}/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "staff", "order-items", "{{orderItemId}}", "status"]
+            }
+          }
+        },
+        {
+          "name": "A teacher cannot read staff orders",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 403', () => pm.response.to.have.status(403));",
+                  "pm.test('reports forbidden', () => pm.expect(pm.response.json().error.code).to.eql('FORBIDDEN'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{teacherToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/staff/orders?date={{orderDate}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "staff", "orders"],
+              "query": [{ "key": "date", "value": "{{orderDate}}" }]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "08 · Reports",
+      "item": [
+        {
+          "name": "Daily report for the order date",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data;",
+                  "pm.test('returns the requested date', () => pm.expect(d.date).to.eql(pm.variables.get('orderDate')));",
+                  "pm.test('includes the non-cancelled order', () => pm.expect(d.dailyTotal.amountPaisa).to.be.above(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{staffToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/staff/reports/daily?date={{orderDate}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "staff", "reports", "daily"],
+              "query": [{ "key": "date", "value": "{{orderDate}}" }]
+            }
+          }
+        },
+        {
+          "name": "Daily report for a seeded date",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data;",
+                  "pm.test('returns the seeded date', () => pm.expect(d.date).to.eql('2026-10-14'));",
+                  "pm.test('includes the seeded orders', () => pm.expect(d.dailyTotal.amountPaisa).to.be.above(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{staffToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/staff/reports/daily?date=2026-10-14",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "staff", "reports", "daily"],
+              "query": [{ "key": "date", "value": "2026-10-14" }]
+            }
+          }
+        },
+        {
+          "name": "Budget report for the new period",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('includes the allocated teacher', () => pm.expect(b.data.map((row) => String(row.teacher.id))).to.include(pm.environment.get('teacherUserId')));",
+                  "pm.test('reports a total', () => pm.expect(b.meta.total).to.be.at.least(1));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/staff/reports/budget?period={{periodId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "staff", "reports", "budget"],
+              "query": [{ "key": "period", "value": "{{periodId}}" }]
+            }
+          }
+        },
+        {
+          "name": "Budget report rejects a bad period",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('reports a validation failure', () => pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/staff/reports/budget?period=abc",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "staff", "reports", "budget"],
+              "query": [{ "key": "period", "value": "abc" }]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "09 · Settings",
+      "item": [
+        {
+          "name": "Read settings",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const settings = pm.response.json().data;",
+                  "const cutoff = settings.find((setting) => setting.key === 'order_cutoff_time');",
+                  "pm.test('includes the ordering cutoff', () => {",
+                  "  pm.expect(cutoff).to.be.an('object');",
+                  "  pm.expect(cutoff.value).to.eql('12:00');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/staff/settings",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "staff", "settings"]
+            }
+          }
+        },
+        {
+          "name": "Update the ordering cutoff",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data;",
+                  "pm.test('stores the new value', () => {",
+                  "  pm.expect(d.key).to.eql('order_cutoff_time');",
+                  "  pm.expect(d.value).to.eql('12:00');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"value\": \"12:00\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/staff/settings/order_cutoff_time",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "staff", "settings", "order_cutoff_time"]
+            }
+          }
+        },
+        {
+          "name": "Invalid cutoff is rejected",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('reports a validation failure', () => pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"value\": \"25:00\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/staff/settings/order_cutoff_time",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "staff", "settings", "order_cutoff_time"]
+            }
+          }
+        },
+        {
+          "name": "Unknown setting is rejected",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('reports a validation failure', () => pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"value\": 1\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/staff/settings/not_a_setting",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "staff", "settings", "not_a_setting"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "10 · User administration",
+      "item": [
+        {
+          "name": "Deactivate an account",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('the account is inactive', () => pm.expect(pm.response.json().data.isActive).to.eql(false));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isActive\": false\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/staff/users/{{newUserId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "staff", "users", "{{newUserId}}"]
+            }
+          }
+        },
+        {
+          "name": "Reactivate the account",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('the account is active again', () => pm.expect(pm.response.json().data.isActive).to.eql(true));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isActive\": true\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/staff/users/{{newUserId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "staff", "users", "{{newUserId}}"]
+            }
+          }
+        },
+        {
+          "name": "Unsupported field is rejected",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('reports a validation failure', () => pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"someone@example.edu\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/staff/users/{{newUserId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "staff", "users", "{{newUserId}}"]
+            }
+          }
+        },
+        {
+          "name": "A teacher cannot administer users",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 403', () => pm.response.to.have.status(403));",
+                  "pm.test('reports forbidden', () => pm.expect(pm.response.json().error.code).to.eql('FORBIDDEN'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{teacherToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isActive\": false\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/staff/users/{{newUserId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "staff", "users", "{{newUserId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "11 · Negative cases",
+      "item": [
+        {
+          "name": "A protected endpoint requires a token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('reports unauthorized', () => pm.expect(pm.response.json().error.code).to.eql('UNAUTHORIZED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "me"]
+            }
+          }
+        },
+        {
+          "name": "A malformed token is rejected",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('reports unauthorized', () => pm.expect(pm.response.json().error.code).to.eql('UNAUTHORIZED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer not-a-real-token" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/locations",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "locations"]
+            }
+          }
+        },
+        {
+          "name": "An unknown route returns 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 404', () => pm.response.to.have.status(404));",
+                  "pm.test('uses the shared error envelope', () => pm.expect(pm.response.json().error.code).to.eql('NOT_FOUND'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/does-not-exist",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "does-not-exist"]
+            }
+          }
+        },
+        {
+          "name": "A teacher cannot read the budget report",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 403', () => pm.response.to.have.status(403));",
+                  "pm.test('reports forbidden', () => pm.expect(pm.response.json().error.code).to.eql('FORBIDDEN'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{teacherToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/staff/reports/budget?period={{periodId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "staff", "reports", "budget"],
+              "query": [{ "key": "period", "value": "{{periodId}}" }]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "99 · Teardown",
+      "item": [
+        {
+          "name": "Sign out",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('confirms the sign out', () => pm.expect(pm.response.json().data.message).to.be.a('string'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{teacherToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/logout",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "logout"]
+            }
+          }
+        },
+        {
+          "name": "The revoked token no longer works",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 401', () => pm.response.to.have.status(401));",
+                  "pm.test('reports unauthorized', () => pm.expect(pm.response.json().error.code).to.eql('UNAUTHORIZED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{teacherToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "me"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
