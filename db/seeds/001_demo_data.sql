@@ -211,6 +211,23 @@ INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, metadata)
   (1, 'user.created', 'user', 2, '{"role":"STAFF","source":"seed"}');
 
 -- ---------------------------------------------------------------------------
+-- Advance the sequences used by tables seeded with explicit ids.
+--
+-- TRUNCATE ... RESTART IDENTITY puts every sequence back at 1, but an INSERT
+-- that supplies an explicit id does not move the sequence forward. Without the
+-- setval calls below, the first row created through the API would ask for id 1
+-- and collide with the demo row that already holds it. That surfaces as a
+-- spurious duplicate error on a perfectly unique value, so the seed must leave
+-- every sequence beyond the highest id it inserted.
+-- ---------------------------------------------------------------------------
+SELECT setval(pg_get_serial_sequence('users', 'id'), (SELECT max(id) FROM users));
+SELECT setval(pg_get_serial_sequence('food_locations', 'id'), (SELECT max(id) FROM food_locations));
+SELECT setval(pg_get_serial_sequence('menu_items', 'id'), (SELECT max(id) FROM menu_items));
+SELECT setval(pg_get_serial_sequence('budget_periods', 'id'), (SELECT max(id) FROM budget_periods));
+SELECT setval(pg_get_serial_sequence('orders', 'id'), (SELECT max(id) FROM orders));
+SELECT setval(pg_get_serial_sequence('order_items', 'id'), (SELECT max(id) FROM order_items));
+
+-- ---------------------------------------------------------------------------
 -- Demo password summary. These are the documented development credentials and
 -- must be changed or deleted before any real deployment.
 -- ---------------------------------------------------------------------------

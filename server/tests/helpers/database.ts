@@ -1,7 +1,9 @@
 import { Client, Pool } from 'pg';
-// The int8 parser is process-wide; importing it here makes the test pool return
-// money as numbers, exactly as the application pool does.
+// The int8 and date parsers are process-wide; importing them here makes the
+// test pool return money as numbers and dates as YYYY-MM-DD strings, exactly as
+// the application pool does.
 import '../../src/db/int8.js';
+import '../../src/db/date.js';
 
 /**
  * Test database access.

@@ -163,31 +163,45 @@ database whose name does not end in `_test`.
 
 ## Postman collection
 
-`postman/JU-Meal-Management.postman.collection.json`, with folders mirroring the
-API: auth, locations, menus, teacher budget, orders, staff operations,
-administration, and a negative-cases folder.
+`postman/JU-Meal-Management.postman_collection.json` runs the whole API in
+order, so a request reuses tokens and ids captured by earlier ones. The folders
+follow the product surface: system health, authentication, locations, menu
+administration, budget administration, teacher budget, orders, staff operations,
+reports, settings, user administration, negative cases, and teardown.
 
-Environment files hold only the base URL and placeholders. **No real token or
-password is committed**; CI injects credentials from repository secrets.
-
-Login captures its token into an environment variable so later requests
-authenticate themselves:
+The collection creates its own far-future budget period, location, menu item,
+and account, so it does not depend on the seeded "current" week still being
+current. Login captures its token into an environment variable:
 
 ```javascript
-pm.test('login returns an access token', function () {
-  pm.response.to.have.status(200);
-  const body = pm.response.json();
-  pm.expect(body.data.accessToken).to.be.a('string').and.not.empty;
-  pm.environment.set('accessToken', body.data.accessToken);
-});
+pm.test('status is 200', () => pm.response.to.have.status(200));
+const body = pm.response.json();
+pm.test(
+  'returns an access token',
+  () => pm.expect(body.data.accessToken).to.be.a('string').and.not.empty,
+);
+pm.environment.set('accessToken', body.data.accessToken);
 ```
 
-The negative folder covers the cases that matter: missing token, malformed
-token, expired token, teacher hitting a staff endpoint, staff without a
-permission they do not hold, and one teacher reading another's order.
+`postman/JU-Meal.local.postman_environment.json` holds only the base URL, the
+demo account emails, empty password fields, and placeholders for captured
+values. **No real token or password is committed.** `scripts/api-tests.mjs` runs
+Newman against that environment and supplies the documented demo passwords as
+defaults, so a fresh checkout needs no configuration. `API_BASE_URL`,
+`ADMIN_PASSWORD`, `STAFF_PASSWORD`, and `TEACHER_PASSWORD` override the defaults
+in CI or against another host.
+
+The negative folders cover missing and malformed tokens, a revoked token after
+sign-out, an unknown route, a teacher hitting staff endpoints, staff without a
+permission they do not hold, one teacher reading another's budget, and every
+documented ordering rejection (closed period, insufficient budget, unavailable
+item, mixed locations, duplicates, and invalid status transitions).
+
+A failed assertion, a request error, or a timeout fails the command. Newman also
+writes `newman-report/report.json` for CI to upload.
 
 ```bash
-npm run test:api     # same command locally and in CI
+npm run test:api     # API must be running against a migrated, seeded database
 ```
 
 ## CI
@@ -248,9 +262,9 @@ failure.
 | 2     | Schema, migration runner, seed             | Verified    |
 | 3     | Authentication and authorisation           | Verified    |
 | 4     | MVC skeleton and locations CRUD            | Verified    |
-| 5     | Menus, budgets, teacher ordering           | In progress |
-| 6     | Staff operations and reporting             | In progress |
-| 7     | Postman collection and Newman              | Planned     |
+| 5     | Menus, budgets, teacher ordering           | Verified    |
+| 6     | Staff operations and reporting             | Verified    |
+| 7     | Postman collection and Newman              | Verified    |
 | 8     | CI integration                             | In progress |
 | 9     | Load testing                               | Planned     |
 | 10    | Frontend                                   | Not started |

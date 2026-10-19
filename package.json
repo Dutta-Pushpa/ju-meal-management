@@ -23,6 +23,7 @@
     "test": "npm run test --workspace server",
     "test:watch": "npm run test:watch --workspace server",
     "test:coverage": "npm run test:coverage --workspace server",
+    "test:api": "node scripts/api-tests.mjs",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "typecheck": "npm run typecheck --workspace shared && npm run typecheck --workspace server && tsc --noEmit -p db/tsconfig.json",
@@ -35,6 +36,7 @@
     "eslint": "^9.17.0",
     "eslint-config-prettier": "^9.1.0",
     "globals": "^15.14.0",
+    "newman": "6.2.3",
     "prettier": "^3.4.2",
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.18.1"

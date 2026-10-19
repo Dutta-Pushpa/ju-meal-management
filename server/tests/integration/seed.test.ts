@@ -161,6 +161,37 @@ describe('seed data', () => {
     expect(Number(rows[0]?.non_example)).toBe(0);
   });
 
+  it('leaves every serial sequence past the explicit demo ids', async () => {
+    // The seed inserts explicit ids so relationships stay stable, which does not
+    // move the underlying sequences. A sequence left behind would make the first
+    // insert through the API collide with a demo row and look like a duplicate.
+    const tables = [
+      'users',
+      'food_locations',
+      'menu_items',
+      'budget_periods',
+      'orders',
+      'order_items',
+    ];
+
+    for (const table of tables) {
+      const sequence = await query<{ last_value: string | null }>(
+        `SELECT last_value::text AS last_value
+           FROM pg_sequences
+          WHERE schemaname = 'public' AND sequencename = $1`,
+        [`${table}_id_seq`],
+      );
+      const max = await query<{ max_id: string }>(
+        `SELECT COALESCE(max(id), 0)::text AS max_id FROM ${table}`,
+      );
+
+      expect(sequence[0]?.last_value, `${table}_id_seq is missing`).not.toBeNull();
+      expect(BigInt(sequence[0]!.last_value!), `${table}_id_seq`).toBeGreaterThanOrEqual(
+        BigInt(max[0]!.max_id),
+      );
+    }
+  });
+
   it('produces identical results when run again', async () => {
     const before = await count('orders');
     const ledgerBefore = await count('budget_ledger');
