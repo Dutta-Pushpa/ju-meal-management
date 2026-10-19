@@ -73,6 +73,48 @@ export async function findUserById(db: Queryable, id: number): Promise<UserRow |
   return rows[0];
 }
 
+export async function lockUserForManagement(
+  db: Queryable,
+  userId: number,
+): Promise<UserRow | undefined> {
+  const { rows } = await db.query<UserRow>(
+    `SELECT ${USER_COLUMNS} FROM users WHERE id = $1 FOR UPDATE`,
+    [userId],
+  );
+  return rows[0];
+}
+
+export async function countOtherActiveAdmins(db: Queryable, userId: number): Promise<number> {
+  const { rows } = await db.query<{ count: number }>(
+    `SELECT count(*)::int AS count FROM users WHERE role = 'ADMIN' AND is_active AND id <> $1`,
+    [userId],
+  );
+  return rows[0]!.count;
+}
+
+export async function updateManagedUser(
+  db: Queryable,
+  userId: number,
+  input: { isActive: boolean; role: Role; permissions: Permission[] },
+): Promise<UserRow> {
+  const { rows } = await db.query<UserRow>(
+    `UPDATE users
+        SET is_active = $2, role = $3, permissions = $4::jsonb,
+            token_version = token_version + 1, updated_at = now()
+      WHERE id = $1
+      RETURNING ${USER_COLUMNS}`,
+    [userId, input.isActive, input.role, JSON.stringify(input.permissions)],
+  );
+  return rows[0]!;
+}
+
+export async function revokeManagedUserSessions(db: Queryable, userId: number): Promise<void> {
+  await db.query(
+    `UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`,
+    [userId],
+  );
+}
+
 /**
  * Replace a password hash.
  *

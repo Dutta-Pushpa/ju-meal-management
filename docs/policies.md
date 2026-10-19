@@ -74,6 +74,9 @@ budgets or edit menus. Least privilege is the default.
 - Staff-only endpoints reject teacher accounts.
 - Menu and budget administration is permission-gated on the server. Hiding a
   control in the user interface is not access control.
+- Staff with `users:manage` may only activate or deactivate teacher accounts;
+  role and permission changes are administrator-only. Every account change
+  revokes active sessions, and the last active administrator cannot be removed.
 
 ### P7 — Prices and history
 
@@ -97,16 +100,16 @@ budgets or edit menus. Least privilege is the default.
 Each of these is implemented as a configurable default so the rule can be changed
 without a schema migration.
 
-| #   | Assumption                                                       | Default                            | Configurable                         |
-| --- | ---------------------------------------------------------------- | ---------------------------------- | ------------------------------------ |
-| A1  | Weekly budget is a single fixed amount for all teachers          | ৳700 per week                      | Yes, per teacher via allocation      |
-| A2  | Unspent budget does not roll over                                | No rollover                        | `app_settings`                       |
-| A3  | "Cafeteria" and "Central Cafeteria" are the same vendor          | One location                       | Seed data; splittable                |
-| A4  | One allocation covers the whole period                           | Whole period                       | Yes                                  |
-| A5  | Orders may be cancelled any time before 12:00 PM                 | Yes                                | `app_settings`                       |
-| A6  | Only weekday lunches are collected                               | No weekend or holiday handling yet | Ordering can be disabled per date    |
-| A7  | Teachers are created by an admin, not self-registered            | Admin-created                      | Public registration in dev/test only |
-| A8  | A teacher may order from any location, not one assigned location | Any location                       | Not yet enforced                     |
+| #   | Assumption                                                       | Default                            | Configurable                                                                                 |
+| --- | ---------------------------------------------------------------- | ---------------------------------- | -------------------------------------------------------------------------------------------- |
+| A1  | Weekly budget is a single fixed amount for all teachers          | ৳700 per week                      | Yes, per teacher via allocation                                                              |
+| A2  | Unspent budget does not roll over                                | No rollover                        | `app_settings`; enabled rollover credits positive prior-period balances into the next period |
+| A3  | "Cafeteria" and "Central Cafeteria" are the same vendor          | One location                       | Seed data; splittable                                                                        |
+| A4  | One allocation covers the whole period                           | Whole period                       | Yes                                                                                          |
+| A5  | Orders may be cancelled any time before 12:00 PM                 | Yes                                | `app_settings`                                                                               |
+| A6  | Only weekday lunches are collected                               | No weekend or holiday handling yet | Ordering can be disabled per date                                                            |
+| A7  | Teachers are created by an admin, not self-registered            | Admin-created                      | Public registration in dev/test only                                                         |
+| A8  | A teacher may order from any location, not one assigned location | Any location                       | Not yet enforced                                                                             |
 
 ## Open questions for the department
 

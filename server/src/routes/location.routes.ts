@@ -9,6 +9,7 @@ import {
   updateLocation,
   type LocationControllerDeps,
 } from '../controllers/location.controller.js';
+import { getMenu } from '../controllers/menu.controller.js';
 
 /**
  * Food-location routes.
@@ -36,6 +37,7 @@ export function createLocationRouter(deps: {
 
   router.get('/', requireAuth(auth), listLocations(controllerDeps));
   router.get('/:id', requireAuth(auth), getLocation(controllerDeps));
+  router.get('/:id/menu', requireAuth(auth), getMenu(deps.db));
   router.post('/', requireAuth(auth), canManage, createLocation(controllerDeps));
   router.patch('/:id', requireAuth(auth), canManage, updateLocation(controllerDeps));
   router.delete('/:id', requireAuth(auth), canManage, deleteLocation(controllerDeps));
