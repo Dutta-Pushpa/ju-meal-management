@@ -121,7 +121,12 @@ slower.
 | `npm test`                  | Unit and integration tests            |
 | `npm run test:watch`        | Same, in watch mode                   |
 | `npm run test:coverage`     | Same, with a coverage report          |
-| `npm run test:api`          | Postman collection via Newman         |
+| `npm run test:api`          | Postman collections via Newman        |
+| `npm run test:api:phase3`   | One phase of the API contract         |
+| `npm run test:api:phase4`   | One phase of the API contract         |
+| `npm run test:api:phase5`   | One phase of the API contract         |
+| `npm run test:api:phase6`   | One phase of the API contract         |
+| `npm run test:api:local`    | Same, against an API it starts itself |
 | `npm run lint`              | Lint the workspace                    |
 | `npm run typecheck`         | Type-check in strict mode             |
 | `npm run format`            | Format the codebase                   |
@@ -290,28 +295,45 @@ Permissions are enforced on the server. A role grants broad access and a
 permission grants a specific capability, so a `STAFF` account can be limited to
 collection work without being able to allocate budgets or edit menus.
 
-## Postman collection
+## Postman collections
 
-`postman/JU-Meal-Management.postman_collection.json` runs the whole API in
-order, so a request reuses tokens and ids captured by earlier ones. The folders
-follow the product surface: system health, authentication, locations, menu
-administration, budget administration, teacher budget, orders, staff operations,
-reports, settings, user administration, negative cases, request validation,
-authorisation boundaries, budget period rules, and teardown.
+The API contract lives in `postman/collections`, split into one collection per
+implementation phase:
 
-The collection creates its own far-future budget period, location, menu item,
-and account, so it does not depend on the seeded "current" week still being
-current. Login captures its token into an environment variable:
+| Collection                                           | Phase | What it covers                                                         |
+| ---------------------------------------------------- | ----- | ---------------------------------------------------------------------- |
+| `phase-3-authentication.postman_collection.json`     | 3     | Registration, sign in, sign out, session restore, role guards          |
+| `phase-4-locations.postman_collection.json`          | 4     | Browsing locations, reading menus, location CRUD, soft deactivation    |
+| `phase-5-menu-budget-orders.postman_collection.json` | 5     | Menu administration, budget periods, allocations, ordering, cancelling |
+| `phase-6-staff-operations.postman_collection.json`   | 6     | Staff dashboard, collection status, reports, settings, user admin      |
 
-```javascript
-pm.test('status is 200', () => pm.response.to.have.status(200));
-const body = pm.response.json();
-pm.test(
-  'returns an access token',
-  () => pm.expect(body.data.accessToken).to.be.a('string').and.not.empty,
-);
-pm.environment.set('accessToken', body.data.accessToken);
+Each collection stands on its own. It begins with a Setup folder that signs in
+and creates the fixtures the phase needs, runs that phase's requests, and ends
+with a teardown. Nothing carries over between collections, so any single phase
+can be run on its own and its result is meaningful. Phases that need data create
+it in their own Setup folder, including their own far-future budget period, so
+they never depend on the seeded "current" week still being current.
+
+```bash
+npm run test:api              # every phase, with a summary per phase
+npm run test:api:phase5       # one phase
+npm run test:api:local        # starts the API on the test database, then stops it
+npm run test:api:local -- phase5
 ```
+
+A failure in one phase does not stop the others, and the runner prints a
+summary per phase:
+
+```text
+  phase3   passed   18 requests, 40 assertions
+  phase4   passed   16 requests, 37 assertions
+  phase5   passed   45 requests, 96 assertions
+  phase6   passed   35 requests, 82 assertions
+```
+
+Each phase writes its own report to `newman-report/<phase>.json`. The folders
+inside a phase follow the product surface: the feature requests, then negative
+cases, request validation, and authorisation boundaries for that phase.
 
 `postman/JU-Meal.local.postman_environment.json` holds only the base URL, the
 demo account emails, empty password fields, and placeholders for captured
@@ -321,10 +343,8 @@ defaults, so a fresh checkout needs no configuration. `API_BASE_URL`,
 `ADMIN_PASSWORD`, `STAFF_PASSWORD`, and `TEACHER_PASSWORD` override the defaults
 in CI or against another host.
 
-The negative folders cover missing and malformed tokens, a revoked token after
-sign-out, an unknown route, a teacher hitting staff endpoints, staff without a
-permission they do not hold, one teacher reading another's budget, and every
-documented ordering rejection.
+See [postman/README.md](../postman/README.md) for the phase breakdown and how
+to add a request.
 
 ### The rate limit and repeated runs
 
@@ -342,12 +362,7 @@ RATE_LIMIT_MAX_REQUESTS=5000 RATE_LIMIT_WINDOW_MINUTES=1 npm run dev:server
 The limit is a production safeguard and is deliberately not weakened in the
 code; only the test environments change it.
 
-A failed assertion, a request error, or a timeout fails the command. Newman also
-writes `newman-report/report.json` for CI to upload.
-
-```bash
-npm run test:api     # API must be running against a migrated, seeded database
-```
+A failed assertion, a request error, or a timeout fails the command.
 
 ## CI
 
