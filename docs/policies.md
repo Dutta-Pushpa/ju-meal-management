@@ -13,14 +13,14 @@ These decisions are settled. Code and interface both enforce them.
 ### P1 — Ordering cutoff
 
 - The daily ordering cutoff is **12:00 PM `Asia/Dhaka`**.
-- The cutoff is enforced by the **backend**. A request that arrives after the
-  cutoff is rejected even if the browser thought ordering was still open.
+- The backend enforces the cutoff. A request that arrives after it is rejected
+  even if the browser thought ordering was still open.
 - After the cutoff, a teacher cannot create, modify, or cancel an order for that
   date.
-- The cutoff time is stored in `app_settings` and is changeable without a code
-  change.
-- Ordering for a specific date can be disabled by staff for a holiday or a
-  vendor closure.
+- The cutoff time is stored in `app_settings` and is changeable without a
+  deployment.
+- Staff can disable ordering for a specific date, for a holiday or a vendor
+  closure.
 
 ### P2 — Orders per day
 
@@ -36,8 +36,8 @@ These decisions are settled. Code and interface both enforce them.
 - Cancellation before the cutoff **refunds the full amount** to the budget for
   that period and writes a matching ledger entry.
 - **After the cutoff only staff may cancel**, and only a staff account holding
-  the cancellation permission. The cancellation requires a reason, and the actor,
-  timestamp, and reason are recorded.
+  the cancellation permission. The cancellation requires a reason, and the
+  actor, timestamp, and reason are recorded.
 - A cancelled order is retained for reporting. It is never deleted.
 
 ### P4 — Budget
@@ -53,7 +53,7 @@ These decisions are settled. Code and interface both enforce them.
   No code path overwrites a balance.
 - Every allocation, debit, refund, and adjustment produces a ledger row.
 
-### P5 — Roles
+### P5 — Roles and permissions
 
 Three roles exist.
 
@@ -65,7 +65,8 @@ Three roles exist.
 
 Role grants broad access. **Permissions** grant specific capabilities, so a
 `STAFF` account can be limited to collection work without being able to allocate
-budgets or edit menus. Least privilege is the default.
+budgets or edit menus. Least privilege is the default. The full permission list
+lives in `shared/src/index.ts` and is enforced by `server/src/middleware/auth.ts`.
 
 ### P6 — Authorisation boundary
 
@@ -126,7 +127,7 @@ silently resolved in code.
    order after 12:00 PM? If so, who authorises it?
 5. **Staff permissions.** Which named staff may allocate budgets, edit menus,
    and authorise refunds? Should these be separate accounts?
-6. **Account creation.** Should teachers set their own password through a
+6. **Account creation.** Should teachers set their own password through an
    activation link, or should an administrator create their account?
 7. **Authentication.** Should institutional single sign-on replace passwords for
    staff?
@@ -142,7 +143,8 @@ silently resolved in code.
 A policy change requires all three of the following:
 
 1. Update the relevant section of this document.
-2. Update the corresponding rule in [api.md](api.md) or [database.md](database.md).
+2. Update the corresponding rule in [development.md](development.md) or
+   [database.md](database.md).
 3. Update the tests that assert the old behaviour, and add a test that asserts
    the new behaviour.
 

@@ -1,14 +1,13 @@
 # Development
 
-Setup, testing, and CI.
+Setup, testing, the API contract, and CI.
 
-> **সংক্ষিপ্ত:** প্রজেক্ট চালানোর নিয়ম, টেস্ট এবং CI সম্পর্কে লেখা আছে।
+> **সংক্ষিপ্ত:** প্রজেক্ট চালানোর নিয়ম, টেস্ট, API এবং CI সম্পর্কে লেখা আছে।
 
 ## Prerequisites
 
 - Node.js 22 LTS and npm 10+
 - Docker with Docker Compose
-- Java 17+ — JMeter load tests only
 
 ## Setup
 
@@ -25,23 +24,25 @@ npm run dev:server           # API on http://localhost:4000
 
 ### The test database
 
-Integration tests need their own database. They never run against development
-or production data: both the helper and the global setup refuse to connect
-unless the database name ends in `_test`.
+Integration tests need their own database. Both the suite and the global setup
+refuse to connect unless the database name ends in `_test`, because the suite
+migrates the schema and truncates every table for real.
+
+The test connection string is resolved in this order:
+
+1. `TEST_DATABASE_URL`, when it is set. It must already name a `_test`
+   database.
+2. Otherwise it is derived from `DATABASE_ADMIN_URL`, or from `DATABASE_URL`
+   when there is no admin URL: the host loses `-pooler` so the connection is
+   direct, and the database name becomes `ju_meal_test` unless it already ends
+   in `_test`.
+
+`npm test` resolves that string, creates the database if it does not exist,
+applies the migrations, and runs the suite. There is no separate setup step.
 
 ```bash
-docker compose exec db createdb -U ju_meal ju_meal_test
+npm test
 ```
-
-Then run the tests with that database:
-
-```bash
-DATABASE_URL=postgresql://ju_meal:ju_meal_dev_password@localhost:5432/ju_meal_test npm test
-```
-
-The test database is migrated automatically before the suite starts, so a new
-checkout needs nothing more than the database existing. Put the value in `.env`
-so it is picked up automatically.
 
 Tests that need a genuinely empty database create a throwaway one and drop it
 afterwards, so they never disturb the shared test database.
@@ -80,51 +81,51 @@ and run multi-statement transactions, so they use `DATABASE_ADMIN_URL`, the
 direct string — a transaction pooler would drop the lock between statements.
 `db/migrate` and `db/seed` both prefer the direct string.
 
-**Keep tests local.** The test suite refuses any database whose name does not end
-in `_test`, and some tests create and drop throwaway databases. Run tests against
-local Docker PostgreSQL or CI, not the shared Neon database. If you want tests on
-Neon, branch the project, create a `ju_meal_test` database there, and point
-`DATABASE_URL` at that database's **direct** (non-pooled) string for the run.
+The test database is derived from the same host with the name `ju_meal_test`, so
+the suite never touches the development data. Set `TEST_DATABASE_URL` in `.env`
+when the test database lives somewhere else, for example on a separate Neon
+branch. It must be the **direct** (non-pooled) string, because the migrations
+take a session-level advisory lock.
 
-Creating a database is slow on a hosted provider, so raise the Vitest timeouts
-for a Neon run rather than editing the config defaults:
+Two schemas, one source of truth: the migrations in `db/migrations` are applied
+to each database separately, and each keeps its own `schema_migrations` table
+with a checksum per file. Editing an applied migration is refused, so the two
+databases cannot drift apart silently.
+
+The timeouts are raised automatically when the test database is not on
+localhost, because a hosted provider is slower to create a scratch database and
+may drop a connection mid-test. Override them when needed:
 
 ```powershell
-$env:DATABASE_URL = "postgresql://...@ep-xxx.aws.neon.tech/ju_meal_test?sslmode=require"
-$env:VITEST_TEST_TIMEOUT = 120000
-$env:VITEST_RETRY = 1
+$env:VITEST_TEST_TIMEOUT = 300000
+$env:VITEST_HOOK_TIMEOUT = 300000
+$env:VITEST_RETRY = 2
 npm test
-Remove-Item Env:DATABASE_URL, Env:VITEST_TEST_TIMEOUT, Env:VITEST_RETRY
 ```
-
-`VITEST_RETRY` absorbs a connection a hosted provider drops mid-test;
-`VITEST_HOOK_TIMEOUT` is available too. An interrupted run can leave
-`jugm_scratch_*` databases behind; drop them by hand.
 
 **Branches.** Neon can copy a database instantly. A teammate can branch to get an
 isolated copy for a risky change, then delete the branch. Each branch has its own
-connection strings.
-
-On the free tier Neon suspends an idle database and resumes it on the next
-connection, so the first query after a quiet spell is slightly slower.
+connection strings. On the free tier Neon suspends an idle database and resumes
+it on the next connection, so the first query after a quiet spell is slightly
+slower.
 
 ## Commands
 
-| Command                     | Description                          |
-| --------------------------- | ------------------------------------ |
-| `npm run dev:server`        | Start the API in watch mode          |
-| `npm run dev:client`        | Start the frontend                   |
-| `npm run db:migrate`        | Apply pending migrations             |
-| `npm run db:migrate:status` | Show applied and pending migrations  |
-| `npm run db:seed`           | Reset and reload fictional demo data |
-| `npm test`                  | Unit and integration tests           |
-| `npm run test:watch`        | Same, in watch mode                  |
-| `npm run test:coverage`     | Same, with a coverage report         |
-| `npm run test:api`          | Postman collection via Newman        |
-| `npm run test:load`         | JMeter load test                     |
-| `npm run lint`              | Lint the workspace                   |
-| `npm run typecheck`         | Type-check in strict mode            |
-| `npm run format`            | Format the codebase                  |
+| Command                     | Description                           |
+| --------------------------- | ------------------------------------- |
+| `npm run dev:server`        | Start the API in watch mode           |
+| `npm run dev:client`        | Start the frontend                    |
+| `npm run db:migrate`        | Apply pending migrations              |
+| `npm run db:migrate:status` | Show applied and pending migrations   |
+| `npm run db:seed`           | Reset and reload fictional demo data  |
+| `npm test`                  | Unit and integration tests            |
+| `npm run test:watch`        | Same, in watch mode                   |
+| `npm run test:coverage`     | Same, with a coverage report          |
+| `npm run test:api`          | Postman collection via Newman         |
+| `npm run lint`              | Lint the workspace                    |
+| `npm run typecheck`         | Type-check in strict mode             |
+| `npm run format`            | Format the codebase                   |
+| `npm run verify`            | Format, lint, type-check, and test    |
 
 ## Testing layers
 
@@ -133,7 +134,6 @@ connection, so the first query after a quiet spell is slightly slower.
 | Unit        | Vitest             | Pure functions: money, status transitions, cutoff logic, aggregation. No database |
 | Integration | Vitest + Supertest | Full HTTP request down to a real PostgreSQL instance                              |
 | API         | Postman + Newman   | End-to-end regression including negative and authorisation cases                  |
-| Load        | JMeter             | Throughput and latency under concurrent activity                                  |
 | E2E         | Deferred           | Browser-level teacher and staff journeys                                          |
 
 Integration tests use a **real database**, never a mock. The rules under test are
@@ -141,10 +141,9 @@ transaction and constraint behaviour, which a fake cannot verify.
 
 Each test file runs inside a transaction that is rolled back afterwards. Tests
 that verify real concurrency use separate connections, since row locking is not
-observable inside a single transaction. The suite refuses to run against a
-database whose name does not end in `_test`.
+observable inside a single transaction.
 
-## What is covered
+### What is covered
 
 | Area          | Cases                                                                                                                                                                                                                      |
 | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -161,13 +160,144 @@ database whose name does not end in `_test`.
 | Settings      | Settings permission, value validation, persisted cutoff and audit record                                                                                                                                                   |
 | Data          | Migrations apply to an empty database, re-runs are a no-op, edited migrations are detected, seed is repeatable, locations are soft deleted                                                                                 |
 
+## API reference
+
+**Base URL** `/api` · **Content type** `application/json` ·
+**Authentication** `Authorization: Bearer <accessToken>` on every protected
+endpoint.
+
+**Business dates** are `YYYY-MM-DD`, always the `Asia/Dhaka` calendar date.
+**Timestamps** are ISO 8601 in UTC.
+
+**Money** is returned as two fields: `amountPaisa` (the authoritative integer,
+use this for arithmetic) and `amountFormatted` (display only, for example
+`৳150.00`). Clients never compute money from the formatted string.
+
+### Envelopes
+
+```json
+{ "data": { "id": 1, "name": "Bot Tola" } }
+```
+
+```json
+{
+  "data": [{ "id": 1 }, { "id": 2 }],
+  "meta": { "total": 2 }
+}
+```
+
+Every failure uses the same shape:
+
+```json
+{
+  "error": {
+    "code": "BUDGET_INSUFFICIENT",
+    "message": "Order total exceeds the available budget for this period.",
+    "details": [{ "field": "items", "issue": "required" }]
+  }
+}
+```
+
+`code` is a stable machine-readable string. Clients branch on `code`, never on
+`message`. `message` is written for a human and may be reworded. `details` is
+present only for validation failures. Stack traces, SQL fragments, and database
+error text are never included.
+
+### Status codes
+
+| Code  | Meaning                                                                     |
+| ----- | --------------------------------------------------------------------------- |
+| `200` | Successful read or update                                                   |
+| `201` | Resource created                                                            |
+| `400` | Malformed request or failed validation                                      |
+| `401` | Missing, malformed, or expired token                                        |
+| `403` | Authenticated but not permitted                                             |
+| `404` | Not found, or not visible to this caller                                    |
+| `409` | Conflicts with existing state, for example a duplicate allocation           |
+| `422` | Well-formed but semantically invalid, for example ordering after the cutoff |
+| `429` | Rate limited                                                                |
+| `500` | Unexpected server error                                                     |
+
+Returning `404` rather than `403` for a resource belonging to another teacher
+prevents an authenticated user from probing for the existence of other
+teachers' records.
+
+### Error codes
+
+| Code                           | Status | Meaning                                                                 |
+| ------------------------------ | ------ | ----------------------------------------------------------------------- |
+| `VALIDATION_ERROR`             | 400    | Request failed validation                                               |
+| `UNAUTHORIZED`                 | 401    | No token, or the token is invalid or expired                            |
+| `FORBIDDEN`                    | 403    | Role or permission does not allow this action                           |
+| `NOT_FOUND`                    | 404    | Resource does not exist or is not visible to the caller                 |
+| `EMAIL_ALREADY_EXISTS`         | 409    | Registration or update used an existing email                           |
+| `LOCATION_ALREADY_EXISTS`      | 409    | A location with that name already exists                                |
+| `LOCATION_HAS_ACTIVE_ORDERS`   | 409    | The location has orders in the current period and cannot be deactivated |
+| `DUPLICATE_ALLOCATION`         | 409    | The teacher already has an allocation for this period                   |
+| `BUDGET_PERIOD_ALREADY_EXISTS` | 409    | The period name is already used or its dates overlap another period     |
+| `ORDERING_CLOSED`              | 422    | The cutoff for this date has passed                                     |
+| `ORDERING_DISABLED`            | 422    | Ordering is disabled for this date, such as a holiday                   |
+| `ITEM_UNAVAILABLE`             | 422    | A requested item is inactive or unavailable                             |
+| `MIXED_LOCATIONS`              | 422    | An order contained items from more than one location                    |
+| `BUDGET_INSUFFICIENT`          | 422    | Order total exceeds the available balance                               |
+| `INVALID_STATUS_TRANSITION`    | 422    | The requested status change is not allowed from the current status      |
+| `CUTOFF_PASSED`                | 422    | Modification attempted after the cutoff                                 |
+| `RATE_LIMITED`                 | 429    | Too many requests                                                       |
+| `INTERNAL_ERROR`               | 500    | Unexpected server error                                                 |
+
+The list is defined once, in `shared/src/index.ts`.
+
+### Endpoints
+
+| Method   | Path                                | Access                   | Purpose                                     |
+| -------- | ----------------------------------- | ------------------------ | ------------------------------------------- |
+| `GET`    | `/health`                           | public                   | Liveness and database connectivity          |
+| `POST`   | `/api/auth/register`                | public in dev            | Create an account                           |
+| `POST`   | `/api/auth/login`                   | public                   | Sign in, returns an access token            |
+| `POST`   | `/api/auth/logout`                  | any signed-in            | Revoke the current session                  |
+| `GET`    | `/api/auth/me`                      | any signed-in            | The current user, with role and permissions |
+| `GET`    | `/api/auth/staff-check`             | `STAFF`                  | Minimal probe of the role guard             |
+| `GET`    | `/api/locations`                    | any signed-in            | List active food locations                  |
+| `GET`    | `/api/locations/:id`                | any signed-in            | One location                                |
+| `GET`    | `/api/locations/:id/menu`           | any signed-in            | The menu of one location                    |
+| `POST`   | `/api/locations`                    | `locations:manage`       | Create a location                           |
+| `PATCH`  | `/api/locations/:id`                | `locations:manage`       | Update a location                           |
+| `DELETE` | `/api/locations/:id`                | `locations:manage`       | Deactivate a location                       |
+| `POST`   | `/api/orders`                       | `TEACHER`                | Place an order                              |
+| `GET`    | `/api/orders/mine`                  | `TEACHER`                | The caller's own orders                     |
+| `GET`    | `/api/orders/mine/:id`              | `TEACHER`                | One of the caller's own orders              |
+| `POST`   | `/api/orders/:id/cancel`            | owner or `orders:cancel` | Cancel an order and refund it               |
+| `GET`    | `/api/teacher/budget`               | signed-in                | Budget summary for the period               |
+| `GET`    | `/api/teacher/budget/ledger`        | signed-in                | Budget ledger entries                       |
+| `GET`    | `/api/staff/orders`                 | `STAFF`                  | Orders for a date, filtered                 |
+| `GET`    | `/api/staff/orders/grouped`         | `STAFF`                  | The same orders, grouped by location        |
+| `PATCH`  | `/api/staff/orders/:id/status`      | `orders:manage_status`   | Change an order's status                    |
+| `PATCH`  | `/api/staff/order-items/:id/status` | `orders:manage_status`   | Change an item's status                     |
+| `GET`    | `/api/staff/reports/daily`          | `STAFF`                  | Daily totals by location                    |
+| `GET`    | `/api/staff/reports/budget`         | `budgets:view`           | Budget report for a period                  |
+| `POST`   | `/api/staff/budget-periods`         | `budgets:allocate`       | Create a budget period                      |
+| `POST`   | `/api/staff/budgets/allocations`    | `budgets:allocate`       | Allocate a budget to a teacher              |
+| `POST`   | `/api/staff/budgets/adjustments`    | `budgets:adjust`         | Record an adjustment                        |
+| `GET`    | `/api/staff/budgets/ledger`         | `budgets:view`           | Ledger entries for a teacher and period     |
+| `POST`   | `/api/staff/menu-items`             | `menu_items:manage`      | Create a menu item                          |
+| `PATCH`  | `/api/staff/menu-items/:id`         | `menu_items:manage`      | Update a menu item                          |
+| `DELETE` | `/api/staff/menu-items/:id`         | `menu_items:manage`      | Deactivate a menu item                      |
+| `GET`    | `/api/staff/settings`               | `settings:manage`        | List the settings                           |
+| `PATCH`  | `/api/staff/settings/:key`          | `settings:manage`        | Change one setting                          |
+| `PATCH`  | `/api/staff/users/:id`              | `users:manage`           | Activate, deactivate, or re-role a user     |
+
+Permissions are enforced on the server. A role grants broad access and a
+permission grants a specific capability, so a `STAFF` account can be limited to
+collection work without being able to allocate budgets or edit menus.
+
 ## Postman collection
 
 `postman/JU-Meal-Management.postman_collection.json` runs the whole API in
 order, so a request reuses tokens and ids captured by earlier ones. The folders
 follow the product surface: system health, authentication, locations, menu
 administration, budget administration, teacher budget, orders, staff operations,
-reports, settings, user administration, negative cases, and teardown.
+reports, settings, user administration, negative cases, request validation,
+authorisation boundaries, budget period rules, and teardown.
 
 The collection creates its own far-future budget period, location, menu item,
 and account, so it does not depend on the seeded "current" week still being
@@ -194,8 +324,23 @@ in CI or against another host.
 The negative folders cover missing and malformed tokens, a revoked token after
 sign-out, an unknown route, a teacher hitting staff endpoints, staff without a
 permission they do not hold, one teacher reading another's budget, and every
-documented ordering rejection (closed period, insufficient budget, unavailable
-item, mixed locations, duplicates, and invalid status transitions).
+documented ordering rejection.
+
+### The rate limit and repeated runs
+
+The API limits requests per client to 300 every 15 minutes by default, which a
+single collection run exhausts. A second run against the same server therefore
+fails with HTTP 429 on every request, which looks like a hundred broken
+assertions rather than one exhausted budget. The runner detects this case and
+says so, and the CI job raises the limit. For a local run, start the API with the
+limit raised:
+
+```bash
+RATE_LIMIT_MAX_REQUESTS=5000 RATE_LIMIT_WINDOW_MINUTES=1 npm run dev:server
+```
+
+The limit is a production safeguard and is deliberately not weakened in the
+code; only the test environments change it.
 
 A failed assertion, a request error, or a timeout fails the command. Newman also
 writes `newman-report/report.json` for CI to upload.
@@ -215,44 +360,21 @@ and then:
 | Capture phase inputs       | Scans the tree for later-phase artifacts                    | Always                                    |
 | Format, lint, type-check   | `format:check`, `lint`, `typecheck`                         | Always                                    |
 | Unit and integration tests | `npm run test:coverage` against a real PostgreSQL service   | Always — coverage uploaded as an artifact |
-| API collection (Newman)    | Boots the API, waits for `/health`, runs `npm run test:api` | `postman/**/*.json` exists (Phase 7)      |
-| Frontend build             | `npm run build --workspace client`                          | `client/vite.config.*` exists (Phase 10)  |
+| API collection (Newman)    | Boots the API, waits for `/health`, runs `npm run test:api` | `postman/**/*.json` exists                |
+| Frontend build             | `npm run build --workspace client`                          | `client/vite.config.*` exists             |
 
 Any failing step fails the pipeline. The tests migrate their own database before
 running, and tests that need a genuinely empty database create and drop one.
 
 Jobs for later phases skip themselves until their files exist, so neither this
-document nor the workflow needs editing as the project grows. A separate
-`.github/workflows/load.yml` runs the JMeter plan nightly or on demand, once
-`tests/load/*.jmx` exists (Phase 9).
+document nor the workflow needs editing as the project grows.
 
-Packaging and deployment — the container image published to GHCR, and the
-deployment checklist for Phase 11 — are documented in
-[deployment.md](deployment.md).
+`.github/workflows/cd.yml` publishes a container image to GitHub Container
+Registry on a version tag, and skips until a `Dockerfile` exists. Its deploy
+job is a disabled placeholder.
 
-## Load testing
-
-JMeter plan at `tests/load/meal-ordering.jmx`, with three thread groups:
-
-| Group | Simulates                             | Threads | Ramp-up |
-| ----- | ------------------------------------- | ------- | ------- |
-| TG1   | Teachers browsing menus               | 25      | 60 s    |
-| TG2   | Teachers checking out near the cutoff | 50      | 30 s    |
-| TG3   | Staff refreshing the daily dashboard  | 5       | 10 s    |
-
-```bash
-docker compose up -d db && npm run db:migrate && npm run db:seed && npm run dev:server
-npm run test:load
-```
-
-Generates `.jtl` output and an HTML report in `tests/load/results/`. Delete the
-report directory before re-running; JMeter will not overwrite a non-empty one.
-
-**Correctness matters more than latency.** After a run, verify that ledger debits
-equal the sum of confirmed order totals, that no teacher's balance went negative,
-that duplicate keys created no duplicates, and that the same-account contention
-run produced no overspend. A fast run with any financial inconsistency is a
-failure.
+`.github/workflows/load.yml` runs the JMeter plan on demand, and skips until
+`tests/load/*.jmx` exists.
 
 ## Roadmap
 
@@ -271,7 +393,4 @@ failure.
 | 11    | Deployment                                 | Not started |
 
 A phase is `Verified` only once it is implemented **and** its tests pass.
-`In progress` means the work is present but not yet proven green in CI. The
-CI workflows (`ci.yml`, `cd.yml`, `load.yml`) are in place; Phase 8 becomes
-`Verified` once they run green on GitHub, and the CD deploy job stays a
-documented placeholder until Phase 11.
+`In progress` means the work is present but not yet proven green in CI.
