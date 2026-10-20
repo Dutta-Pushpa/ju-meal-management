@@ -1,15 +1,17 @@
 import type { Request, Response } from 'express';
+import { ORDER_STATUSES } from '@ju/shared';
 import type { Database } from '../db/pool.js';
 import type { AppConfig } from '../config/env.js';
-import { currentUser } from '../middleware/auth.js';
-import { badRequest, forbidden, unprocessable } from '../utils/errors.js';
+import { assertPermission, currentUser } from '../middleware/auth.js';
+import { badRequest, unprocessable } from '../utils/errors.js';
+import { requireEnum, requireObject, requireOptionalString } from '../utils/validation.js';
 import {
-  requireEnum,
-  requireInt,
-  requireObject,
-  requireString,
-  ValidationError,
-} from '../utils/validation.js';
+  readEnumQuery,
+  readIntQuery,
+  readOptionalIntQuery,
+  readPathId,
+  requireDateQuery,
+} from '../utils/request.js';
 import { cancelOrder as cancelOrderService } from '../services/order.service.js';
 import {
   changeOrderItemStatus,
@@ -21,18 +23,22 @@ import { presentGroupedOrders, presentStaffOrder } from '../views/staff-order.vi
 import type { StaffOrderFilters } from '../models/staff-order.model.js';
 import { presentOrder } from '../views/order.view.js';
 
-const ORDER_STATUSES = ['CONFIRMED', 'COLLECTED', 'DELIVERED', 'CANCELLED'] as const;
+/**
+ * The states an item may be moved to. `PENDING` is the state an item is
+ * created in, never a transition target.
+ */
+const ITEM_STATUS_TARGETS = ['COLLECTED', 'DELIVERED'] as const;
 
 export function listStaffOrders(db: Database) {
   return async (req: Request, res: Response): Promise<void> => {
     const filters: StaffOrderFilters = {
-      date: readBusinessDate(req.query['date'], 'date'),
-      locationId: readOptionalInt(req, 'locationId'),
-      status: readOptionalStatus(req),
-      teacherId: readOptionalInt(req, 'teacherId'),
+      date: requireDateQuery(req, 'date'),
+      locationId: readOptionalIntQuery(req, 'locationId', 1, Number.MAX_SAFE_INTEGER),
+      status: readEnumQuery(req, 'status', ORDER_STATUSES),
+      teacherId: readOptionalIntQuery(req, 'teacherId', 1, Number.MAX_SAFE_INTEGER),
     };
-    const page = readIntQuery(req, 'page', 1, 1_000_000);
-    const pageSize = readIntQuery(req, 'pageSize', 50, 100);
+    const page = readIntQuery(req, 'page', 1, 1, 1_000_000);
+    const pageSize = readIntQuery(req, 'pageSize', 50, 1, 100);
     const result = await getStaffOrders(db, filters, page, pageSize);
     res.status(200).json({
       data: result.orders.map(({ row, items }) => presentStaffOrder(row, items)),
@@ -43,7 +49,7 @@ export function listStaffOrders(db: Database) {
 
 export function groupedStaffOrders(db: Database) {
   return async (req: Request, res: Response): Promise<void> => {
-    const date = readBusinessDate(req.query['date'], 'date');
+    const date = requireDateQuery(req, 'date');
     const result = await getGroupedStaffOrders(db, date);
     res.status(200).json({ data: presentGroupedOrders(result) });
   };
@@ -54,11 +60,11 @@ export function patchStaffOrderStatus(deps: { db: Database; config: AppConfig })
     const actor = currentUser(req);
     const body = requireObject(req.body ?? {}, 'body');
     const status = requireEnum(body['status'], 'status', ORDER_STATUSES);
-    const note = optionalNote(body['note']);
+    const note = requireOptionalString(body['note'], 'note', { maxLength: 500 }) ?? null;
     const orderId = readPathId(req);
 
     if (status === 'CANCELLED') {
-      requirePermission(actor.role, actor.permissions, 'orders:cancel');
+      assertPermission(actor, 'orders:cancel');
       if (!note) throw badRequest('note is required when cancelling an order.');
       const result = await cancelOrderService(deps.db, {
         orderId,
@@ -70,7 +76,7 @@ export function patchStaffOrderStatus(deps: { db: Database; config: AppConfig })
       return;
     }
 
-    requirePermission(actor.role, actor.permissions, 'orders:manage_status');
+    assertPermission(actor, 'orders:manage_status');
     if (status === 'CONFIRMED') {
       throw unprocessable('INVALID_STATUS_TRANSITION', 'Orders cannot be moved back to confirmed.');
     }
@@ -89,88 +95,18 @@ export function patchStaffOrderStatus(deps: { db: Database; config: AppConfig })
 export function patchStaffOrderItemStatus(db: Database) {
   return async (req: Request, res: Response): Promise<void> => {
     const actor = currentUser(req);
-    requirePermission(actor.role, actor.permissions, 'orders:manage_status');
+    assertPermission(actor, 'orders:manage_status');
     const body = requireObject(req.body ?? {}, 'body');
-    const status = requireEnum(body['status'], 'status', ['COLLECTED', 'DELIVERED'] as const);
+    const status = requireEnum(body['status'], 'status', ITEM_STATUS_TARGETS);
     const itemId = readPathId(req);
     const result = await changeOrderItemStatus(db, {
       itemId,
       status,
       actorId: actor.id,
-      note: optionalNote(body['note']),
+      note: requireOptionalString(body['note'], 'note', { maxLength: 500 }) ?? null,
     });
     res.status(200).json({
       data: { id: itemId, oldStatus: result.oldStatus, status: result.status },
     });
   };
-}
-
-function readBusinessDate(value: unknown, field: string): string {
-  const date = requireString(value, field);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    throw badRequest(`${field} must be a valid date in YYYY-MM-DD format.`);
-  }
-  const parsed = new Date(`${date}T00:00:00.000Z`);
-  if (Number.isNaN(parsed.valueOf()) || parsed.toISOString().slice(0, 10) !== date) {
-    throw badRequest(`${field} must be a valid date in YYYY-MM-DD format.`);
-  }
-  return date;
-}
-
-function readOptionalInt(req: Request, key: string): number | undefined {
-  const raw = req.query[key];
-  if (raw === undefined) return undefined;
-  if (typeof raw !== 'string' || !/^\d+$/.test(raw)) {
-    throw badRequest(`${key} must be a positive integer.`);
-  }
-  return requireInt(Number(raw), key, { min: 1, max: Number.MAX_SAFE_INTEGER });
-}
-
-function readOptionalStatus(req: Request): StaffOrderFilters['status'] {
-  const raw = req.query['status'];
-  if (raw === undefined) return undefined;
-  return requireEnum(raw, 'status', ORDER_STATUSES);
-}
-
-function readIntQuery(req: Request, key: string, fallback: number, max: number): number {
-  const raw = req.query[key];
-  if (raw === undefined) return fallback;
-  if (typeof raw !== 'string' || !/^\d+$/.test(raw)) {
-    throw badRequest(`${key} must be a positive integer.`);
-  }
-  return requireInt(Number(raw), key, { min: 1, max });
-}
-
-function readPathId(req: Request): number {
-  const raw = req.params['id'];
-  if (typeof raw !== 'string' || !/^\d+$/.test(raw)) {
-    throw badRequest('id must be a positive integer.');
-  }
-  return requireInt(Number(raw), 'id', { min: 1 });
-}
-
-function optionalNote(value: unknown): string | null {
-  if (value === undefined || value === null) return null;
-  if (typeof value !== 'string') {
-    throw new ValidationError([
-      { field: 'note', issue: 'invalid_type', message: 'note must be a string' },
-    ]);
-  }
-  const note = value.trim();
-  if (note.length > 500) {
-    throw new ValidationError([
-      { field: 'note', issue: 'too_big', message: 'note must be at most 500 characters' },
-    ]);
-  }
-  return note || null;
-}
-
-function requirePermission(
-  role: 'TEACHER' | 'STAFF' | 'ADMIN',
-  permissions: readonly string[],
-  permission: 'orders:cancel' | 'orders:manage_status',
-): void {
-  if (role !== 'ADMIN' && (role !== 'STAFF' || !permissions.includes(permission))) {
-    throw forbidden('You do not have permission to perform this action.');
-  }
 }

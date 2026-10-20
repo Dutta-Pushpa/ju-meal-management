@@ -1,9 +1,6 @@
 import type { OrderItemRow } from '../models/order.model.js';
 import type { StaffOrderRow } from '../models/staff-order.model.js';
-
-function money(amountPaisa: number) {
-  return { amountPaisa, amountFormatted: `৳${(amountPaisa / 100).toFixed(2)}` };
-}
+import { presentMoney } from '../utils/money.js';
 
 export function presentStaffOrder(row: StaffOrderRow, items: OrderItemRow[]) {
   return {
@@ -12,7 +9,7 @@ export function presentStaffOrder(row: StaffOrderRow, items: OrderItemRow[]) {
     foodLocation: { id: row.food_location_id, name: row.location_name },
     orderDate: row.order_date,
     status: row.status,
-    total: money(row.total_paisa),
+    total: presentMoney(row.total_paisa),
     items: items.map((item) => ({ name: item.item_name_snapshot, quantity: item.quantity })),
     confirmedAt: row.confirmed_at.toISOString(),
   };
@@ -41,15 +38,15 @@ export function presentGroupedOrders(result: {
     locations: result.locations.map((group) => ({
       location: group.location,
       teacherCount: group.teacherCount,
-      total: money(group.totalPaisa),
+      total: presentMoney(group.totalPaisa),
       itemSummary: group.itemSummary,
       orders: group.orders.map((order) => ({
         id: order.id,
         teacherName: order.teacherName,
         items: order.items,
-        total: money(order.totalPaisa),
+        total: presentMoney(order.totalPaisa),
       })),
     })),
-    dailyTotal: money(result.dailyTotalPaisa),
+    dailyTotal: presentMoney(result.dailyTotalPaisa),
   };
 }

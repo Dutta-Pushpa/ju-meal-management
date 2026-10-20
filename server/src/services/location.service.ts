@@ -3,7 +3,13 @@ import { conflict, notFound } from '../utils/errors.js';
 import { isUniqueViolation } from '../utils/pg-errors.js';
 import { writeAudit } from '../models/audit.model.js';
 import * as locations from '../models/location.model.js';
-import type { LocationRow } from '../models/location.model.js';
+import type {
+  CreateLocationInput,
+  LocationRow,
+  UpdateLocationInput,
+} from '../models/location.model.js';
+
+export type { CreateLocationInput, UpdateLocationInput };
 
 /**
  * Food-location rules.
@@ -19,19 +25,6 @@ export interface LocationDeps {
   db: Database;
   /** Application timezone, used to resolve the current budget period. */
   timezone: string;
-}
-
-export interface CreateLocationInput {
-  name: string;
-  nameBn: string | null;
-  description: string | null;
-}
-
-export interface UpdateLocationInput {
-  name?: string;
-  nameBn?: string | null;
-  description?: string | null;
-  isActive?: boolean;
 }
 
 export async function listLocations(deps: LocationDeps): Promise<LocationRow[]> {

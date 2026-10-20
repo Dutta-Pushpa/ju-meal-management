@@ -2,7 +2,14 @@ import type { Request, Response } from 'express';
 import type { Database } from '../db/pool.js';
 import { currentUser } from '../middleware/auth.js';
 import { badRequest } from '../utils/errors.js';
-import { requireBoolean, requireInt, requireObject, requireString } from '../utils/validation.js';
+import {
+  requireBoolean,
+  requireInt,
+  requireObject,
+  requireOptionalString,
+  requireString,
+} from '../utils/validation.js';
+import { hasField, readPathId } from '../utils/request.js';
 import {
   createMenuItem as createMenuItemService,
   deactivateMenuItem as deactivateMenuItemService,
@@ -11,17 +18,16 @@ import {
 } from '../services/menu.service.js';
 import { presentMenu, presentMenuItem } from '../views/menu.view.js';
 
-export function getMenu(db: Database) {
-  return async (req: Request, res: Response): Promise<void> => {
-    const locationId = requireInt(Number(req.params['id']), 'id', { min: 1 });
-    const { location, items } = await getLocationMenu(db, locationId);
-    res.status(200).json(presentMenu(location, items));
-  };
-}
-
 const NAME_MAX_LENGTH = 200;
 const DESCRIPTION_MAX_LENGTH = 2_000;
 const CATEGORY_MAX_LENGTH = 100;
+
+export function getMenu(db: Database) {
+  return async (req: Request, res: Response): Promise<void> => {
+    const { location, items } = await getLocationMenu(db, readPathId(req));
+    res.status(200).json(presentMenu(location, items));
+  };
+}
 
 export function createMenuItem(db: Database) {
   return async (req: Request, res: Response): Promise<void> => {
@@ -32,8 +38,13 @@ export function createMenuItem(db: Database) {
       {
         foodLocationId: requireInt(body['foodLocationId'], 'foodLocationId', { min: 1 }),
         name: requireString(body['name'], 'name', { minLength: 1, maxLength: NAME_MAX_LENGTH }),
-        description: optionalText(body['description'], 'description', DESCRIPTION_MAX_LENGTH),
-        category: optionalText(body['category'], 'category', CATEGORY_MAX_LENGTH),
+        description:
+          requireOptionalString(body['description'], 'description', {
+            maxLength: DESCRIPTION_MAX_LENGTH,
+          }) ?? null,
+        category:
+          requireOptionalString(body['category'], 'category', { maxLength: CATEGORY_MAX_LENGTH }) ??
+          null,
         pricePaisa: requireInt(body['pricePaisa'], 'pricePaisa', {
           min: 1,
           max: Number.MAX_SAFE_INTEGER,
@@ -55,34 +66,39 @@ export function updateMenuItem(db: Database) {
     const body = requireObject(req.body ?? {}, 'body');
     const patch: Parameters<typeof updateMenuItemService>[2] = {};
 
-    if (has(body, 'foodLocationId')) {
+    if (hasField(body, 'foodLocationId')) {
       patch.foodLocationId = requireInt(body['foodLocationId'], 'foodLocationId', { min: 1 });
     }
-    if (has(body, 'name')) {
+    if (hasField(body, 'name')) {
       patch.name = requireString(body['name'], 'name', {
         minLength: 1,
         maxLength: NAME_MAX_LENGTH,
       });
     }
-    if (has(body, 'description')) {
-      patch.description = optionalText(body['description'], 'description', DESCRIPTION_MAX_LENGTH);
+    if (hasField(body, 'description')) {
+      patch.description =
+        requireOptionalString(body['description'], 'description', {
+          maxLength: DESCRIPTION_MAX_LENGTH,
+        }) ?? null;
     }
-    if (has(body, 'category')) {
-      patch.category = optionalText(body['category'], 'category', CATEGORY_MAX_LENGTH);
+    if (hasField(body, 'category')) {
+      patch.category =
+        requireOptionalString(body['category'], 'category', { maxLength: CATEGORY_MAX_LENGTH }) ??
+        null;
     }
-    if (has(body, 'pricePaisa')) {
+    if (hasField(body, 'pricePaisa')) {
       patch.pricePaisa = requireInt(body['pricePaisa'], 'pricePaisa', {
         min: 1,
         max: Number.MAX_SAFE_INTEGER,
       });
     }
-    if (has(body, 'isAvailable')) {
+    if (hasField(body, 'isAvailable')) {
       patch.isAvailable = requireBoolean(body['isAvailable'], 'isAvailable');
     }
-    if (has(body, 'isActive')) patch.isActive = requireBoolean(body['isActive'], 'isActive');
+    if (hasField(body, 'isActive')) patch.isActive = requireBoolean(body['isActive'], 'isActive');
     if (Object.keys(patch).length === 0) throw badRequest('Supply at least one field to update.');
 
-    const row = await updateMenuItemService(db, readId(req), patch, actor.id);
+    const row = await updateMenuItemService(db, readPathId(req), patch, actor.id);
     res.status(200).json({ data: presentMenuItem(row) });
   };
 }
@@ -90,32 +106,7 @@ export function updateMenuItem(db: Database) {
 export function deleteMenuItem(db: Database) {
   return async (req: Request, res: Response): Promise<void> => {
     const actor = currentUser(req);
-    const row = await deactivateMenuItemService(db, readId(req), actor.id);
+    const row = await deactivateMenuItemService(db, readPathId(req), actor.id);
     res.status(200).json({ data: presentMenuItem(row) });
   };
-}
-
-function has(body: Record<string, unknown>, key: string): boolean {
-  return Object.prototype.hasOwnProperty.call(body, key);
-}
-
-function readId(req: Request): number {
-  return requireInt(Number(req.params['id']), 'id', { min: 1 });
-}
-
-function optionalText(value: unknown, field: string, maxLength: number): string | null {
-  if (value === null || value === undefined) return null;
-  if (typeof value !== 'string') {
-    throw badRequest(`${field} must be a string or null.`, [
-      { field, issue: 'invalid_type', message: `${field} must be a string or null` },
-    ]);
-  }
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  if (trimmed.length > maxLength) {
-    throw badRequest(`${field} must be at most ${maxLength} characters.`, [
-      { field, issue: 'too_big', message: `${field} must be at most ${maxLength} characters` },
-    ]);
-  }
-  return trimmed;
 }

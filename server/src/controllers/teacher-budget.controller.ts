@@ -1,8 +1,8 @@
 import type { Request, Response } from 'express';
 import type { Database } from '../db/pool.js';
 import { currentUser } from '../middleware/auth.js';
-import { badRequest, forbidden } from '../utils/errors.js';
-import { requireInt } from '../utils/validation.js';
+import { forbidden, badRequest } from '../utils/errors.js';
+import { readIntQuery, requireIntQuery } from '../utils/request.js';
 import { getTeacherBudget, getTeacherLedger } from '../services/teacher-budget.service.js';
 import { presentTeacherBudget, presentTeacherLedgerEntry } from '../views/teacher-budget.view.js';
 
@@ -21,8 +21,8 @@ export function getLedger(db: Database) {
   return async (req: Request, res: Response): Promise<void> => {
     const actor = currentUser(req);
     const { teacherId, periodId } = readIds(req, actor.id, actor.role);
-    const page = readQueryInt(req, 'page', 1, 1, Number.MAX_SAFE_INTEGER);
-    const perPage = readQueryInt(req, 'perPage', 20, 1, MAX_PAGE_SIZE);
+    const page = readIntQuery(req, 'page', 1, 1, Number.MAX_SAFE_INTEGER);
+    const perPage = readIntQuery(req, 'perPage', 20, 1, MAX_PAGE_SIZE);
     const result = await getTeacherLedger(db, teacherId, periodId, page, perPage);
     res.status(200).json({
       data: result.entries.map(presentTeacherLedgerEntry),
@@ -31,35 +31,32 @@ export function getLedger(db: Database) {
   };
 }
 
+/**
+ * Resolve whose budget is being read.
+ *
+ * A teacher may only read their own. Staff and administrators may name any
+ * teacher, and default to nobody in particular when they do not.
+ */
 function readIds(req: Request, actorId: number, role: string) {
-  const periodId = readQueryInt(req, 'period', undefined, 1, Number.MAX_SAFE_INTEGER);
+  const periodId = requireIntQuery(req, 'period', 1, Number.MAX_SAFE_INTEGER);
   const requestedTeacher = req.query['teacherId'];
+
   if (role === 'TEACHER') {
     if (
       requestedTeacher !== undefined &&
-      readQueryInt(req, 'teacherId', undefined, 1, Number.MAX_SAFE_INTEGER) !== actorId
+      requireIntQuery(req, 'teacherId', 1, Number.MAX_SAFE_INTEGER) !== actorId
     ) {
       throw forbidden('Teachers may only view their own budget.');
     }
     return { teacherId: actorId, periodId };
   }
+
+  if (requestedTeacher === undefined) {
+    throw badRequest('teacherId is required.');
+  }
+
   return {
-    teacherId: readQueryInt(req, 'teacherId', undefined, 1, Number.MAX_SAFE_INTEGER),
+    teacherId: requireIntQuery(req, 'teacherId', 1, Number.MAX_SAFE_INTEGER),
     periodId,
   };
-}
-
-function readQueryInt(
-  req: Request,
-  key: string,
-  fallback: number | undefined,
-  min: number,
-  max: number,
-): number {
-  const raw = req.query[key];
-  if (raw === undefined && fallback !== undefined) return fallback;
-  if (typeof raw !== 'string' || !/^\d+$/.test(raw)) {
-    throw badRequest(`${key} query parameter must be a positive integer.`);
-  }
-  return requireInt(Number(raw), key, { min, max });
 }

@@ -1,7 +1,6 @@
 import type { Permission, Role } from '@ju/shared';
 import { conflict, forbidden, unauthorized } from '../utils/errors.js';
 import {
-  PASSWORD_MIN_LENGTH,
   assertPasswordAcceptable,
   hashPassword,
   needsRehash,
@@ -11,7 +10,7 @@ import { type IssuedToken, signAccessToken, verifyAccessToken } from '../utils/t
 import { isUniqueViolation } from '../utils/pg-errors.js';
 import * as users from '../models/user.model.js';
 import { writeAudit } from '../models/audit.model.js';
-import type { Database, Queryable, TransactionClient } from '../db/pool.js';
+import type { Database, Queryable } from '../db/pool.js';
 
 /**
  * Authentication and account creation.
@@ -241,16 +240,3 @@ export async function logout(db: Queryable, token: string, jwtSecret: string): P
   const claims = verifyAccessToken(token, jwtSecret);
   await users.revokeSession(db, claims.sid);
 }
-
-/**
- * Reject every session and token for a user.
- *
- * Used when a password changes or an account is deactivated, where keeping
- * existing tokens alive would defeat the purpose.
- */
-export async function revokeAllForUser(db: TransactionClient, userId: number): Promise<void> {
-  await users.bumpTokenVersion(db, userId);
-  await users.revokeAllSessionsForUser(db, userId);
-}
-
-export const PASSWORD_POLICY_MIN_LENGTH = PASSWORD_MIN_LENGTH;

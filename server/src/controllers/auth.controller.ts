@@ -76,6 +76,15 @@ export function register(deps: AuthControllerDeps) {
       throw badRequest('Only an administrator may create staff or admin accounts.');
     }
 
+    // Anonymous self-registration may only ever create a TEACHER. Without this
+    // check, the open dev/test endpoint would mint an administrator for anyone
+    // who asked for one, which is a privilege escalation rather than a
+    // convenience. An administrator who wants staff accounts uses this endpoint
+    // with a token, which is checked above.
+    if (!actor && role !== 'TEACHER') {
+      throw badRequest('Self-registration may only create teacher accounts.');
+    }
+
     const user = await registerUser(deps, { fullName, email, password, role }, actor);
 
     res.status(201).json({ data: presentUser(user) });

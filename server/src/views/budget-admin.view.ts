@@ -1,12 +1,5 @@
 import type { BudgetEntryRow } from '../models/budget.model.js';
-
-function presentMoney(amountPaisa: number) {
-  const sign = amountPaisa < 0 ? '-' : '';
-  return {
-    amountPaisa,
-    amountFormatted: `${sign}৳${(Math.abs(amountPaisa) / 100).toFixed(2)}`,
-  };
-}
+import { presentMoney } from '../utils/money.js';
 
 export function presentBudgetEntry(entry: BudgetEntryRow) {
   return {

@@ -21,14 +21,6 @@ export interface BudgetEntryRow {
   created_at: Date;
 }
 
-export async function findTeacher(db: Queryable, teacherId: number): Promise<boolean> {
-  const { rows } = await db.query<{ id: number }>(
-    `SELECT id FROM users WHERE id = $1 AND role = 'TEACHER' AND is_active FOR UPDATE`,
-    [teacherId],
-  );
-  return rows.length > 0;
-}
-
 export async function teacherExists(db: Queryable, teacherId: number): Promise<boolean> {
   const { rows } = await db.query<{ id: number }>(
     `SELECT id FROM users WHERE id = $1 AND role = 'TEACHER'`,

@@ -39,7 +39,6 @@ export interface UpdateLocationInput {
   description?: string | null;
   isActive?: boolean;
 }
-
 /** Active locations for the browse view, alphabetically. */
 export async function listActiveLocations(db: Queryable): Promise<LocationRow[]> {
   const { rows } = await db.query<LocationRow>(

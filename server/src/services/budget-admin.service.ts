@@ -5,6 +5,7 @@ import { isExclusionViolation, isUniqueViolation } from '../utils/pg-errors.js';
 import { writeAudit } from '../models/audit.model.js';
 import * as budget from '../models/budget.model.js';
 import * as teacherBudget from '../models/teacher-budget.model.js';
+import { lockActiveTeacher } from '../models/user.model.js';
 
 export async function createBudgetPeriod(
   db: Database,
@@ -71,7 +72,7 @@ export async function allocateBudget(
 ) {
   try {
     return await withTransaction(db, async (tx) => {
-      if (!(await budget.findTeacher(tx, input.teacherId))) {
+      if (!(await lockActiveTeacher(tx, input.teacherId))) {
         throw notFound('No active teacher with that id.');
       }
       if (!(await budget.findActivePeriod(tx, input.periodId))) {
@@ -127,7 +128,7 @@ export async function adjustBudget(
   },
 ) {
   return withTransaction(db, async (tx) => {
-    if (!(await budget.findTeacher(tx, input.teacherId))) {
+    if (!(await lockActiveTeacher(tx, input.teacherId))) {
       throw notFound('No active teacher with that id.');
     }
     if (!(await budget.findActivePeriod(tx, input.periodId))) {

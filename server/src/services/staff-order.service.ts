@@ -3,6 +3,7 @@ import { withTransaction } from '../db/pool.js';
 import { notFound, unprocessable } from '../utils/errors.js';
 import { writeAudit } from '../models/audit.model.js';
 import * as staffOrders from '../models/staff-order.model.js';
+import { findItemsForOrders, groupItemsByOrder } from '../models/order.model.js';
 
 export async function getStaffOrders(
   db: Database,
@@ -12,26 +13,21 @@ export async function getStaffOrders(
 ) {
   const total = await staffOrders.countStaffOrders(db, filters);
   const rows = await staffOrders.listStaffOrders(db, filters, pageSize, (page - 1) * pageSize);
-  const items = await staffOrders.findStaffOrderItems(
+  const items = await findItemsForOrders(
     db,
     rows.map((row) => row.id),
   );
-  const byOrder = new Map<number, typeof items>();
-  for (const item of items)
-    byOrder.set(item.order_id, [...(byOrder.get(item.order_id) ?? []), item]);
+  const byOrder = groupItemsByOrder(items);
   return { orders: rows.map((row) => ({ row, items: byOrder.get(row.id) ?? [] })), total };
 }
 
 export async function getGroupedStaffOrders(db: Database, date: string) {
   const rows = await staffOrders.listAllStaffOrdersForDate(db, date);
-  const items = await staffOrders.findStaffOrderItems(
+  const items = await findItemsForOrders(
     db,
     rows.map((row) => row.id),
   );
-  const itemsByOrder = new Map<number, typeof items>();
-  for (const item of items) {
-    itemsByOrder.set(item.order_id, [...(itemsByOrder.get(item.order_id) ?? []), item]);
-  }
+  const itemsByOrder = groupItemsByOrder(items);
 
   const groups = new Map<
     number,

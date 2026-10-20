@@ -2,12 +2,12 @@ import type { NextFunction, Request, Response } from 'express';
 import type { ApiErrorResponse } from '@ju/shared';
 import { isAppError } from '../utils/errors.js';
 import { ValidationError } from '../utils/validation.js';
+import {
+  PG_CHECK_VIOLATION,
+  PG_FOREIGN_KEY_VIOLATION,
+  PG_UNIQUE_VIOLATION,
+} from '../utils/pg-errors.js';
 import type { Logger } from '../utils/logger.js';
-
-/** PostgreSQL error codes we can translate into a meaningful response. */
-const PG_UNIQUE_VIOLATION = '23505';
-const PG_FOREIGN_KEY_VIOLATION = '23503';
-const PG_CHECK_VIOLATION = '23514';
 
 interface PgError extends Error {
   code?: string;

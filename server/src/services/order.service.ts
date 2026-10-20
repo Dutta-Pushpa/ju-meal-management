@@ -1,6 +1,7 @@
 import { withTransaction, type Database } from '../db/pool.js';
 import type { OrderItemInput, OrderQueryFilters } from '../models/order.model.js';
 import * as orders from '../models/order.model.js';
+import { lockActiveTeacher } from '../models/user.model.js';
 import { internal, notFound, unprocessable } from '../utils/errors.js';
 import { writeAudit } from '../models/audit.model.js';
 
@@ -16,7 +17,7 @@ export async function placeOrder(db: Database, input: PlaceOrderInput) {
   return withTransaction(
     db,
     async (tx) => {
-      if (!(await orders.lockTeacher(tx, input.teacherId))) {
+      if (!(await lockActiveTeacher(tx, input.teacherId))) {
         throw notFound('Active teacher account not found.');
       }
 
@@ -115,9 +116,7 @@ export async function getMyOrders(
     db,
     rows.map((row) => row.id),
   );
-  const grouped = new Map<number, typeof items>();
-  for (const item of items)
-    grouped.set(item.order_id, [...(grouped.get(item.order_id) ?? []), item]);
+  const grouped = orders.groupItemsByOrder(items);
   return {
     orders: rows.map((row) => ({ row, items: grouped.get(row.id) ?? [] })),
     total,

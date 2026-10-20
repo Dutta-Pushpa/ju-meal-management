@@ -92,6 +92,22 @@ export async function countOtherActiveAdmins(db: Queryable, userId: number): Pro
   return rows[0]!.count;
 }
 
+/**
+ * Lock an active teacher row and report whether it exists.
+ *
+ * The row lock is what serialises concurrent orders by the same teacher, so
+ * two simultaneous requests cannot both read the same balance and both
+ * succeed. It is taken before the balance is read, inside the order
+ * transaction.
+ */
+export async function lockActiveTeacher(db: Queryable, teacherId: number): Promise<boolean> {
+  const { rows } = await db.query<{ id: number }>(
+    `SELECT id FROM users WHERE id = $1 AND role = 'TEACHER' AND is_active FOR UPDATE`,
+    [teacherId],
+  );
+  return rows.length > 0;
+}
+
 export async function updateManagedUser(
   db: Queryable,
   userId: number,
@@ -127,43 +143,6 @@ export async function updatePasswordHash(
   passwordHash: string,
 ): Promise<void> {
   await db.query('UPDATE users SET password_hash = $2 WHERE id = $1', [userId, passwordHash]);
-}
-
-/** Increment the token version, invalidating every token the user holds. */
-export async function bumpTokenVersion(db: Queryable, userId: number): Promise<number> {
-  const { rows } = await db.query<{ token_version: number }>(
-    `UPDATE users SET token_version = token_version + 1 WHERE id = $1 RETURNING token_version`,
-    [userId],
-  );
-
-  return rows[0]!.token_version;
-}
-
-export async function setUserActive(
-  db: Queryable,
-  userId: number,
-  isActive: boolean,
-): Promise<UserRow | undefined> {
-  const { rows } = await db.query<UserRow>(
-    `UPDATE users SET is_active = $2 WHERE id = $1 RETURNING ${USER_COLUMNS}`,
-    [userId, isActive],
-  );
-
-  return rows[0];
-}
-
-export async function updateUserRoleAndPermissions(
-  db: Queryable,
-  userId: number,
-  role: Role,
-  permissions: Permission[],
-): Promise<UserRow | undefined> {
-  const { rows } = await db.query<UserRow>(
-    `UPDATE users SET role = $2, permissions = $3::jsonb WHERE id = $1 RETURNING ${USER_COLUMNS}`,
-    [userId, role, JSON.stringify(permissions)],
-  );
-
-  return rows[0];
 }
 
 // ---------------------------------------------------------------------
@@ -235,13 +214,4 @@ export async function revokeSession(db: Queryable, sessionId: string): Promise<b
   );
 
   return (result.rowCount ?? 0) > 0;
-}
-
-export async function revokeAllSessionsForUser(db: Queryable, userId: number): Promise<number> {
-  const result = await db.query(
-    `UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`,
-    [userId],
-  );
-
-  return result.rowCount ?? 0;
 }

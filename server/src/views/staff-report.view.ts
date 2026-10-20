@@ -1,9 +1,5 @@
 import type { DailyLocationTotal, TeacherBudgetReportRow } from '../models/staff-report.model.js';
-
-function money(amountPaisa: number) {
-  const sign = amountPaisa < 0 ? '-' : '';
-  return { amountPaisa, amountFormatted: `${sign}৳${(Math.abs(amountPaisa) / 100).toFixed(2)}` };
-}
+import { presentMoney } from '../utils/money.js';
 
 export function presentDailyReport(result: {
   date: string;
@@ -15,9 +11,9 @@ export function presentDailyReport(result: {
     locations: result.locations.map((row) => ({
       location: { id: row.location_id!, name: row.location_name! },
       orderCount: row.order_count,
-      total: money(row.total_paisa),
+      total: presentMoney(row.total_paisa),
     })),
-    dailyTotal: money(result.dailyTotalPaisa),
+    dailyTotal: presentMoney(result.dailyTotalPaisa),
   };
 }
 
@@ -25,11 +21,11 @@ export function presentBudgetReport(rows: TeacherBudgetReportRow[]) {
   return {
     data: rows.map((row) => ({
       teacher: { id: row.teacher_id, fullName: row.teacher_name },
-      allocated: money(row.allocated_paisa),
-      spent: money(row.spent_paisa),
-      refunded: money(row.refunded_paisa),
-      adjusted: money(row.adjusted_paisa),
-      available: money(row.available_paisa),
+      allocated: presentMoney(row.allocated_paisa),
+      spent: presentMoney(row.spent_paisa),
+      refunded: presentMoney(row.refunded_paisa),
+      adjusted: presentMoney(row.adjusted_paisa),
+      available: presentMoney(row.available_paisa),
     })),
     meta: { total: rows.length },
   };

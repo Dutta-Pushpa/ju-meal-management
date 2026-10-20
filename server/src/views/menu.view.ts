@@ -1,12 +1,6 @@
 import type { LocationRow } from '../models/location.model.js';
 import type { MenuItemRow } from '../models/menu.model.js';
-
-function presentPrice(amountPaisa: number) {
-  return {
-    amountPaisa,
-    amountFormatted: `৳${(amountPaisa / 100).toFixed(2)}`,
-  };
-}
+import { presentMoney } from '../utils/money.js';
 
 export function presentMenuItem(item: MenuItemRow) {
   return {
@@ -15,7 +9,7 @@ export function presentMenuItem(item: MenuItemRow) {
     name: item.name,
     description: item.description,
     category: item.category,
-    price: presentPrice(item.price_paisa),
+    price: presentMoney(item.price_paisa),
     isAvailable: item.is_available,
     isActive: item.is_active,
   };
@@ -30,7 +24,7 @@ export function presentMenu(location: LocationRow, items: MenuItemRow[]) {
         name: item.name,
         description: item.description,
         category: item.category,
-        price: presentPrice(item.price_paisa),
+        price: presentMoney(item.price_paisa),
         isAvailable: item.is_available,
       })),
     },

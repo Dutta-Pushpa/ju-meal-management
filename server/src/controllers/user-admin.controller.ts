@@ -5,16 +5,13 @@ import { currentUser } from '../middleware/auth.js';
 import { updateUser } from '../services/user-admin.service.js';
 import { presentUser } from '../views/auth.view.js';
 import { badRequest } from '../utils/errors.js';
-import { requireBoolean, requireEnum, requireInt, requireObject } from '../utils/validation.js';
+import { requireBoolean, requireEnum, requireObject } from '../utils/validation.js';
+import { hasField, readPathId } from '../utils/request.js';
 
 export function patchUser(db: Database) {
   return async (req: Request, res: Response): Promise<void> => {
     const actor = currentUser(req);
-    const rawId = req.params['id'];
-    if (typeof rawId !== 'string' || !/^\d+$/.test(rawId)) {
-      throw badRequest('id must be a positive integer.');
-    }
-    const userId = requireInt(Number(rawId), 'id', { min: 1 });
+    const userId = readPathId(req);
     const body = requireObject(req.body ?? {}, 'body');
     const allowed = new Set(['isActive', 'role', 'permissions']);
     if (Object.keys(body).some((key) => !allowed.has(key)))
@@ -23,11 +20,11 @@ export function patchUser(db: Database) {
       userId,
       actorId: actor.id,
       actorRole: actor.role,
-      ...(Object.hasOwn(body, 'isActive')
+      ...(hasField(body, 'isActive')
         ? { isActive: requireBoolean(body['isActive'], 'isActive') }
         : {}),
-      ...(Object.hasOwn(body, 'role') ? { role: requireEnum(body['role'], 'role', ROLES) } : {}),
-      ...(Object.hasOwn(body, 'permissions')
+      ...(hasField(body, 'role') ? { role: requireEnum(body['role'], 'role', ROLES) } : {}),
+      ...(hasField(body, 'permissions')
         ? { permissions: parsePermissions(body['permissions']) }
         : {}),
     };

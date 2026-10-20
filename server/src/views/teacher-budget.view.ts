@@ -1,12 +1,5 @@
 import type { TeacherBudgetSummaryRow, TeacherLedgerRow } from '../models/teacher-budget.model.js';
-
-function money(amountPaisa: number) {
-  const sign = amountPaisa < 0 ? '-' : '';
-  return {
-    amountPaisa,
-    amountFormatted: `${sign}৳${(Math.abs(amountPaisa) / 100).toFixed(2)}`,
-  };
-}
+import { presentMoney } from '../utils/money.js';
 
 export function presentTeacherBudget(row: TeacherBudgetSummaryRow) {
   return {
@@ -16,11 +9,11 @@ export function presentTeacherBudget(row: TeacherBudgetSummaryRow) {
       startsOn: row.starts_on,
       endsOn: row.ends_on,
     },
-    allocated: money(row.allocated_paisa),
-    spent: money(row.spent_paisa),
-    refunded: money(row.refunded_paisa),
-    adjusted: money(row.adjusted_paisa),
-    available: money(row.available_paisa),
+    allocated: presentMoney(row.allocated_paisa),
+    spent: presentMoney(row.spent_paisa),
+    refunded: presentMoney(row.refunded_paisa),
+    adjusted: presentMoney(row.adjusted_paisa),
+    available: presentMoney(row.available_paisa),
   };
 }
 
@@ -30,7 +23,7 @@ export function presentTeacherLedgerEntry(row: TeacherLedgerRow) {
     teacherId: row.teacher_id,
     budgetPeriodId: row.budget_period_id,
     entryType: row.entry_type,
-    amount: money(row.amount_paisa),
+    amount: presentMoney(row.amount_paisa),
     orderId: row.order_id,
     reason: row.reason,
     createdBy: row.created_by,
