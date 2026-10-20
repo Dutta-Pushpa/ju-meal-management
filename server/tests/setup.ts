@@ -8,6 +8,7 @@
  */
 import { fileURLToPath } from 'node:url';
 import { config as loadDotenv } from 'dotenv';
+import { resolveTestDatabaseUrl } from './helpers/test-database-url.js';
 
 // Load the repo-root .env explicitly. This file runs with the cwd set to
 // server/ (npm runs workspace scripts there), but the single .env lives at the
@@ -18,4 +19,9 @@ loadDotenv({ path: fileURLToPath(new URL('../../.env', import.meta.url)) });
 process.env['NODE_ENV'] = 'test';
 process.env['LOG_LEVEL'] = 'silent';
 process.env['LOG_PRETTY'] = 'false';
-process.env['BUDGET_ROLLOVER'] = 'false';
+
+// The global setup already resolved this in the main process. Resolving it
+// again here guarantees the worker points at the test database even if the
+// environment did not carry the change across.
+process.env['DATABASE_URL'] = resolveTestDatabaseUrl();
+process.env['DATABASE_ADMIN_URL'] = process.env['DATABASE_URL'];

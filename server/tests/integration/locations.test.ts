@@ -10,7 +10,7 @@ import { closePool, getPool, query, queryOne, truncateAll } from '../helpers/dat
 /**
  * Food-location CRUD, end to end over HTTP.
  *
- * These cases pin the rules from docs/api.md and docs/policies.md: reading is
+ * These cases pin the rules from docs/development.md and docs/policies.md: reading is
  * open to any signed-in user, writing needs ADMIN or the `locations:manage`
  * permission, deletion is a soft deactivation, and a location with live orders in
  * the current period cannot be deactivated.
@@ -33,9 +33,6 @@ const config: AppConfig = {
   JWT_EXPIRES_IN_MINUTES: 15,
   BCRYPT_COST: TEST_BCRYPT_COST,
   APP_TIMEZONE: TZ,
-  ORDER_CUTOFF_TIME: '12:00',
-  BUDGET_ROLLOVER: false,
-  DEFAULT_WEEKLY_BUDGET_PAISA: 70_000,
   CORS_ORIGIN: ['http://localhost:5173'],
   TRUST_PROXY: false,
   RATE_LIMIT_WINDOW_MINUTES: 15,

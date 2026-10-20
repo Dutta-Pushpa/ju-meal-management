@@ -259,8 +259,11 @@ export async function readStatus(
 }
 
 /** Resolve the connection string from configuration, preferring the admin URL. */
-export function resolveConnectionString(config: { DATABASE_URL: string }): string {
-  return process.env['DATABASE_ADMIN_URL'] ?? config.DATABASE_URL;
+export function resolveConnectionString(config: {
+  DATABASE_URL: string;
+  DATABASE_ADMIN_URL: string | undefined;
+}): string {
+  return config.DATABASE_ADMIN_URL ?? config.DATABASE_URL;
 }
 
 async function connect(): Promise<Client> {

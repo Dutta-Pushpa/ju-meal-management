@@ -32,9 +32,6 @@ const config: AppConfig = {
   JWT_EXPIRES_IN_MINUTES: 15,
   BCRYPT_COST: TEST_BCRYPT_COST,
   APP_TIMEZONE: 'Asia/Dhaka',
-  ORDER_CUTOFF_TIME: '12:00',
-  BUDGET_ROLLOVER: false,
-  DEFAULT_WEEKLY_BUDGET_PAISA: 70_000,
   CORS_ORIGIN: ['http://localhost:5173'],
   TRUST_PROXY: false,
   RATE_LIMIT_WINDOW_MINUTES: 15,
@@ -132,6 +129,29 @@ describe('POST /api/auth/register', () => {
     expect(serialised).not.toContain('password');
     expect(serialised).not.toContain(TEACHER_PASSWORD);
     expect(serialised).not.toContain('$2b$');
+  });
+
+  it('rejects anonymous self-registration of a privileged account', async () => {
+    // The open dev/test registration endpoint must never mint an ADMIN or a
+    // STAFF account. Allowing it would let anyone become an administrator by
+    // asking for one.
+    for (const role of ['ADMIN', 'STAFF']) {
+      const res = await registerViaApi({
+        fullName: 'Escalation Attempt',
+        email: `escalation-${role.toLowerCase()}@example.edu`,
+        password: TEACHER_PASSWORD,
+        role,
+      });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    }
+
+    const rows = await query<{ count: string }>(
+      `SELECT count(*)::text AS count FROM users WHERE email LIKE 'escalation-%'`,
+    );
+
+    expect(rows[0]?.count).toBe('0');
   });
 
   it('stores the password as a bcrypt hash, never in plaintext', async () => {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Request, Response } from 'express';
+import { PERMISSIONS, ROLES } from '@ju/shared';
 import {
   currentUser,
   requirePermission,
@@ -158,8 +159,7 @@ describe('currentUser', () => {
     }
   });
 
-  it('exposes ROLES and PERMISSIONS for controllers to share', async () => {
-    const { ROLES, PERMISSIONS } = await import('../../src/middleware/auth.js');
+  it('exposes the shared role and permission lists', () => {
     expect(ROLES).toContain('TEACHER');
     expect(PERMISSIONS).toContain('orders:manage_status');
   });

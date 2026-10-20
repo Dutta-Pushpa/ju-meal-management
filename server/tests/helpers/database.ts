@@ -4,6 +4,7 @@ import { Client, Pool } from 'pg';
 // the application pool does.
 import '../../src/db/int8.js';
 import '../../src/db/date.js';
+import { ADMIN_DATABASE } from './test-database-url.js';
 
 /**
  * Test database access.
@@ -16,8 +17,6 @@ import '../../src/db/date.js';
  * a development or production database would truncate real data, so a run that
  * is not clearly a test database fails immediately rather than proceeding.
  */
-
-export const ADMIN_DATABASE = 'postgres';
 
 function databaseNameFrom(url: string): string {
   try {
