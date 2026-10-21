@@ -76,12 +76,12 @@ beforeAll(async () => {
   db = getPool();
   await truncateAll();
   app = createApp({ config, logger, db });
-  await seedUser('settings-admin@example.edu', 'ADMIN');
-  await seedUser('settings-staff@example.edu', 'STAFF', ['settings:manage', 'users:manage']);
-  await seedUser('settings-teacher@example.edu', 'TEACHER');
-  adminToken = await login('settings-admin@example.edu');
-  staffToken = await login('settings-staff@example.edu');
-  teacherToken = await login('settings-teacher@example.edu');
+  await seedUser('settings-admin@juniv.edu', 'ADMIN');
+  await seedUser('settings-staff@juniv.edu', 'STAFF', ['settings:manage', 'users:manage']);
+  await seedUser('settings-teacher@juniv.edu', 'TEACHER');
+  adminToken = await login('settings-admin@juniv.edu');
+  staffToken = await login('settings-staff@juniv.edu');
+  teacherToken = await login('settings-teacher@juniv.edu');
 });
 
 afterAll(async () => {
@@ -162,9 +162,7 @@ describe('/api/staff/settings', () => {
 
   it('limits staff user management and lets admins deactivate teachers with session revocation', async () => {
     const teacher = (
-      await query<{ id: number }>(
-        `SELECT id FROM users WHERE email = 'settings-teacher@example.edu'`,
-      )
+      await query<{ id: number }>(`SELECT id FROM users WHERE email = 'settings-teacher@juniv.edu'`)
     )[0]!;
     const denied = await request(app)
       .patch(`/api/staff/users/${teacher.id}`)
@@ -187,7 +185,7 @@ describe('/api/staff/settings', () => {
 
   it('prevents deactivating the last active administrator', async () => {
     const admin = (
-      await query<{ id: number }>(`SELECT id FROM users WHERE email = 'settings-admin@example.edu'`)
+      await query<{ id: number }>(`SELECT id FROM users WHERE email = 'settings-admin@juniv.edu'`)
     )[0]!;
     const response = await request(app)
       .patch(`/api/staff/users/${admin.id}`)

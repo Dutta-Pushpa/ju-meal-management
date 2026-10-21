@@ -89,14 +89,14 @@ beforeAll(async () => {
   db = getPool();
   await truncateAll();
   app = createApp({ config, logger: silentLogger, db });
-  await seedUser('admin@example.edu', 'ADMIN');
-  await seedUser('manager@example.edu', 'STAFF', ['menu_items:manage']);
-  await seedUser('restricted@example.edu', 'STAFF');
-  teacherId = await seedUser('teacher@example.edu', 'TEACHER');
-  adminToken = await login('admin@example.edu');
-  managerToken = await login('manager@example.edu');
-  noPermissionToken = await login('restricted@example.edu');
-  teacherToken = await login('teacher@example.edu');
+  await seedUser('admin@juniv.edu', 'ADMIN');
+  await seedUser('manager@juniv.edu', 'STAFF', ['menu_items:manage']);
+  await seedUser('restricted@juniv.edu', 'STAFF');
+  teacherId = await seedUser('teacher@juniv.edu', 'TEACHER');
+  adminToken = await login('admin@juniv.edu');
+  managerToken = await login('manager@juniv.edu');
+  noPermissionToken = await login('restricted@juniv.edu');
+  teacherToken = await login('teacher@juniv.edu');
   const locations = await query<{ id: number }>(
     `INSERT INTO food_locations (name) VALUES ($1) RETURNING id`,
     [unique('Vendor')],

@@ -41,6 +41,7 @@ erDiagram
         text email UK
         text password_hash
         text role
+        text designation "nullable"
         text permissions "JSON array, empty for TEACHER"
         boolean is_active
         integer token_version
@@ -144,6 +145,7 @@ Every teacher, staff member, and administrator.
 | `email`                     | `text`        | Required, **unique**, stored lower-cased                                        |
 | `password_hash`             | `text`        | bcrypt hash, always with the `$2b$` prefix. Plaintext is never stored or logged |
 | `role`                      | `text`        | `TEACHER`, `STAFF`, or `ADMIN`, enforced by a `CHECK` constraint                |
+| `designation`               | `text`        | Academic or staff designation (e.g. Professor, Lecturer). Nullable              |
 | `permissions`               | `jsonb`       | Array of granted permission strings. Always `[]` for `TEACHER`                  |
 | `is_active`                 | `boolean`     | A deactivated user cannot log in and their tokens stop working                  |
 | `token_version`             | `integer`     | Embedded in every JWT. Incrementing it revokes all of that user's tokens        |

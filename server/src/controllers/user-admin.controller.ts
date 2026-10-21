@@ -38,6 +38,7 @@ export function patchUser(db: Database) {
         fullName: updated.full_name,
         email: updated.email,
         role: updated.role,
+        designation: updated.designation ?? null,
         permissions: updated.permissions,
         isActive: updated.is_active,
         createdAt: updated.created_at,

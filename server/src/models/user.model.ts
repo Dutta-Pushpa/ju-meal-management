@@ -16,6 +16,7 @@ export interface UserRow {
   email: string;
   password_hash: string;
   role: Role;
+  designation?: string | null;
   permissions: Permission[];
   is_active: boolean;
   token_version: number;
@@ -25,7 +26,7 @@ export interface UserRow {
 
 /** Columns that are always returned. The password hash is added only where needed. */
 const USER_COLUMNS = `
-  id, full_name, email, password_hash, role, permissions, is_active,
+  id, full_name, email, password_hash, role, designation, permissions, is_active,
   token_version, created_at, updated_at
 `;
 
@@ -34,19 +35,21 @@ export interface CreateUserInput {
   email: string;
   passwordHash: string;
   role: Role;
+  designation?: string | null;
   permissions: Permission[];
 }
 
 export async function insertUser(db: Queryable, input: CreateUserInput): Promise<UserRow> {
   const { rows } = await db.query<UserRow>(
-    `INSERT INTO users (full_name, email, password_hash, role, permissions)
-     VALUES ($1, $2, $3, $4, $5::jsonb)
+    `INSERT INTO users (full_name, email, password_hash, role, designation, permissions)
+     VALUES ($1, $2, $3, $4, $5, $6::jsonb)
      RETURNING ${USER_COLUMNS}`,
     [
       input.fullName,
       input.email,
       input.passwordHash,
       input.role,
+      input.designation ?? null,
       JSON.stringify(input.permissions),
     ],
   );

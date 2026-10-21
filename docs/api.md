@@ -126,7 +126,7 @@ Request:
 ```json
 {
   "fullName": "A. Teacher",
-  "email": "teacher@example.edu",
+  "email": "teacher@juniv.edu",
   "password": "Str0ngPassw0rd!",
   "role": "TEACHER"
 }
@@ -139,7 +139,7 @@ Request:
   "data": {
     "id": 42,
     "fullName": "A. Teacher",
-    "email": "teacher@example.edu",
+    "email": "teacher@juniv.edu",
     "role": "TEACHER",
     "permissions": [],
     "isActive": true,
@@ -165,7 +165,7 @@ one of the three defined roles.
 Request:
 
 ```json
-{ "email": "teacher@example.edu", "password": "Str0ngPassw0rd!" }
+{ "email": "teacher@juniv.edu", "password": "Str0ngPassw0rd!" }
 ```
 
 `200` response:
@@ -179,7 +179,7 @@ Request:
     "user": {
       "id": 42,
       "fullName": "A. Teacher",
-      "email": "teacher@example.edu",
+      "email": "teacher@juniv.edu",
       "role": "TEACHER",
       "permissions": []
     }

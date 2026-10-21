@@ -27,7 +27,7 @@ function stubRes(): Response {
 const teacher: AuthUser = {
   id: 1,
   fullName: 'A. Teacher',
-  email: 'teacher@example.edu',
+  email: 'teacher@juniv.edu',
   role: 'TEACHER',
   permissions: [],
 };
@@ -35,7 +35,7 @@ const teacher: AuthUser = {
 const collector: AuthUser = {
   id: 2,
   fullName: 'Demo Staff',
-  email: 'staff@example.edu',
+  email: 'staff@juniv.edu',
   role: 'STAFF',
   permissions: ['orders:manage_status'],
 };
@@ -43,7 +43,7 @@ const collector: AuthUser = {
 const admin: AuthUser = {
   id: 3,
   fullName: 'Admin',
-  email: 'admin@example.edu',
+  email: 'admin@juniv.edu',
   role: 'ADMIN',
   permissions: [],
 };

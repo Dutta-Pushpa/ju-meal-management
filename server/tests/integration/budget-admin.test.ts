@@ -97,14 +97,14 @@ beforeAll(async () => {
   db = getPool();
   await truncateAll();
   app = createApp({ config, logger: silentLogger, db });
-  await seedUser('admin@example.edu', 'ADMIN');
-  await seedUser('allocator@example.edu', 'STAFF', ['budgets:allocate']);
-  await seedUser('adjuster@example.edu', 'STAFF', ['budgets:adjust']);
-  teacherId = await seedUser('teacher@example.edu', 'TEACHER');
-  adminToken = await login('admin@example.edu');
-  allocatorToken = await login('allocator@example.edu');
-  adjusterToken = await login('adjuster@example.edu');
-  teacherToken = await login('teacher@example.edu');
+  await seedUser('admin@juniv.edu', 'ADMIN');
+  await seedUser('allocator@juniv.edu', 'STAFF', ['budgets:allocate']);
+  await seedUser('adjuster@juniv.edu', 'STAFF', ['budgets:adjust']);
+  teacherId = await seedUser('teacher@juniv.edu', 'TEACHER');
+  adminToken = await login('admin@juniv.edu');
+  allocatorToken = await login('allocator@juniv.edu');
+  adjusterToken = await login('adjuster@juniv.edu');
+  teacherToken = await login('teacher@juniv.edu');
 });
 
 afterAll(async () => {

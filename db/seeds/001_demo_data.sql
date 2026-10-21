@@ -50,14 +50,36 @@ INSERT INTO app_settings (key, value, description) VALUES
 -- Users. Three accounts are fixed so the documented demo credentials work, and
 -- four further fictional teachers exist to make the staff views meaningful.
 -- ---------------------------------------------------------------------------
-INSERT INTO users (id, full_name, email, password_hash, role, permissions) VALUES
-  (1, 'Demo Admin',            'admin@example.edu',   :admin_password_hash,   'ADMIN',  '["users:create","users:manage","settings:manage","budgets:allocate","budgets:adjust","budgets:view","locations:manage","menu_items:manage","orders:cancel","orders:manage_status"]'),
-  (2, 'Demo Staff',            'staff@example.edu',   :staff_password_hash,   'STAFF',  '["orders:manage_status","locations:manage","menu_items:manage"]'),
-  (3, 'Rumana Haque',          'teacher@example.edu', :teacher_password_hash, 'TEACHER', '[]'),
-  (4, 'Tanvir Hasan',          'tanvir@example.edu',   :teacher_password_hash, 'TEACHER', '[]'),
-  (5, 'Nusrat Jahan',          'nusrat@example.edu',   :teacher_password_hash, 'TEACHER', '[]'),
-  (6, 'Arif Chowdhury',        'arif@example.edu',     :teacher_password_hash, 'TEACHER', '[]'),
-  (7, 'Sharmeen Akter',        'sharmeen@example.edu', :teacher_password_hash, 'TEACHER', '[]');
+INSERT INTO users (id, full_name, email, password_hash, role, designation, permissions) VALUES
+  (1, 'Demo Admin',                       'admin@juniv.edu',             :admin_password_hash,   'ADMIN',   NULL,                  '["users:create","users:manage","settings:manage","budgets:allocate","budgets:adjust","budgets:view","locations:manage","menu_items:manage","orders:cancel","orders:manage_status"]'),
+  (2, 'Demo Staff',                       'staff@juniv.edu',             :staff_password_hash,   'STAFF',   NULL,                  '["orders:manage_status","locations:manage","menu_items:manage"]'),
+  (3, 'Dr. Jugal Krishna Das',             'teacher@juniv.edu',           :teacher_password_hash, 'TEACHER', 'Professor',           '[]'),
+  (4, 'Dr. Mohammad Shorif Uddin',         'shorif.uddin@juniv.edu',       :teacher_password_hash, 'TEACHER', 'Professor',           '[]'),
+  (5, 'Dr. Mohammad Zahidur Rahman',       'zahidur.rahman@juniv.edu',     :teacher_password_hash, 'TEACHER', 'Professor',           '[]'),
+  (6, 'Dr. Md. Imdadul Islam',             'imdadul.islam@juniv.edu',      :teacher_password_hash, 'TEACHER', 'Professor',           '[]'),
+  (7, 'Dr. Liton Jude Rozario',            'liton.rozario@juniv.edu',      :teacher_password_hash, 'TEACHER', 'Professor',           '[]'),
+  (8, 'Md. Golam Moazzam',                 'golam.moazzam@juniv.edu',      :teacher_password_hash, 'TEACHER', 'Professor',           '[]'),
+  (9, 'Dr. Israt Jahan',                   'israt.jahan@juniv.edu',        :teacher_password_hash, 'TEACHER', 'Professor',           '[]'),
+  (10, 'Dr. Md. Humayun Kabir',            'humayun.kabir@juniv.edu',      :teacher_password_hash, 'TEACHER', 'Professor',           '[]'),
+  (11, 'Dr. Md Abul Kalam Azad',           'kalam.azad@juniv.edu',         :teacher_password_hash, 'TEACHER', 'Professor',           '[]'),
+  (12, 'Abu Sayed Md. Mostafizur Rahaman', 'mostafizur.rahaman@juniv.edu', :teacher_password_hash, 'TEACHER', 'Professor',           '[]'),
+  (13, 'Dr. Md. Ezharul Islam',            'ezharul.islam@juniv.edu',      :teacher_password_hash, 'TEACHER', 'Professor',           '[]'),
+  (14, 'Dr. Morium Akter',                 'morium.akter@juniv.edu',       :teacher_password_hash, 'TEACHER', 'Professor',           '[]'),
+  (15, 'Dr. Sanjit Kumar Saha',            'sanjit.saha@juniv.edu',        :teacher_password_hash, 'TEACHER', 'Professor',           '[]'),
+  (16, 'Dr. Md. Musfique Anwar',           'musfique.anwar@juniv.edu',     :teacher_password_hash, 'TEACHER', 'Professor',           '[]'),
+  (17, 'Sarnali Basak',                    'sarnali.basak@juniv.edu',      :teacher_password_hash, 'TEACHER', 'Associate Professor', '[]'),
+  (18, 'Amina Khatun',                     'amina.khatun@juniv.edu',       :teacher_password_hash, 'TEACHER', 'Associate Professor', '[]'),
+  (19, 'Sabrina Sharmin',                  'sabrina.sharmin@juniv.edu',    :teacher_password_hash, 'TEACHER', 'Associate Professor', '[]'),
+  (20, 'Tahsina Hashem',                   'tahsina.hashem@juniv.edu',     :teacher_password_hash, 'TEACHER', 'Assistant Professor', '[]'),
+  (21, 'Md. Rafsan Jani',                  'rafsan.jani@juniv.edu',        :teacher_password_hash, 'TEACHER', 'Associate Professor', '[]'),
+  (22, 'Mohammad Ashraful Islam',          'ashraful.islam@juniv.edu',     :teacher_password_hash, 'TEACHER', 'Assistant Professor', '[]'),
+  (23, 'Bulbul Ahammad',                   'bulbul.ahammad@juniv.edu',     :teacher_password_hash, 'TEACHER', 'Assistant Professor', '[]'),
+  (24, 'Anup Majumder',                    'anup.majumder@juniv.edu',      :teacher_password_hash, 'TEACHER', 'Assistant Professor', '[]'),
+  (25, 'Nadia Afrin Ritu',                 'nadia.ritu@juniv.edu',         :teacher_password_hash, 'TEACHER', 'Assistant Professor', '[]'),
+  (26, 'Samsun Nahar Khandakar',           'samsun.khandakar@juniv.edu',   :teacher_password_hash, 'TEACHER', 'Assistant Professor', '[]'),
+  (27, 'Md. Masum Bhuiyan',                'masum.bhuiyan@juniv.edu',      :teacher_password_hash, 'TEACHER', 'Lecturer',            '[]'),
+  (28, 'Nishat Tasnim',                    'nishat.tasnim@juniv.edu',      :teacher_password_hash, 'TEACHER', 'Lecturer',            '[]'),
+  (29, 'Lubna Yasmin Pinky',               'lubna.pinky@juniv.edu',        :teacher_password_hash, 'TEACHER', 'Lecturer',            '[]');
 
 -- ---------------------------------------------------------------------------
 -- Food locations.
@@ -108,6 +130,28 @@ VALUES
   (5, 2, 70000, 1),
   (6, 2, 70000, 1),
   (7, 2, 70000, 1),
+  (8, 2, 70000, 1),
+  (9, 2, 70000, 1),
+  (10, 2, 70000, 1),
+  (11, 2, 70000, 1),
+  (12, 2, 70000, 1),
+  (13, 2, 70000, 1),
+  (14, 2, 70000, 1),
+  (15, 2, 70000, 1),
+  (16, 2, 70000, 1),
+  (17, 2, 70000, 1),
+  (18, 2, 70000, 1),
+  (19, 2, 70000, 1),
+  (20, 2, 70000, 1),
+  (21, 2, 70000, 1),
+  (22, 2, 70000, 1),
+  (23, 2, 70000, 1),
+  (24, 2, 70000, 1),
+  (25, 2, 70000, 1),
+  (26, 2, 70000, 1),
+  (27, 2, 70000, 1),
+  (28, 2, 70000, 1),
+  (29, 2, 70000, 1),
   (3, 1, 70000, 1),
   (4, 1, 70000, 1);
 
@@ -117,6 +161,28 @@ INSERT INTO budget_ledger (teacher_id, budget_period_id, entry_type, amount_pais
   (5, 2, 'allocation', 70000, 'Weekly allocation', 1),
   (6, 2, 'allocation', 70000, 'Weekly allocation', 1),
   (7, 2, 'allocation', 70000, 'Weekly allocation', 1),
+  (8, 2, 'allocation', 70000, 'Weekly allocation', 1),
+  (9, 2, 'allocation', 70000, 'Weekly allocation', 1),
+  (10, 2, 'allocation', 70000, 'Weekly allocation', 1),
+  (11, 2, 'allocation', 70000, 'Weekly allocation', 1),
+  (12, 2, 'allocation', 70000, 'Weekly allocation', 1),
+  (13, 2, 'allocation', 70000, 'Weekly allocation', 1),
+  (14, 2, 'allocation', 70000, 'Weekly allocation', 1),
+  (15, 2, 'allocation', 70000, 'Weekly allocation', 1),
+  (16, 2, 'allocation', 70000, 'Weekly allocation', 1),
+  (17, 2, 'allocation', 70000, 'Weekly allocation', 1),
+  (18, 2, 'allocation', 70000, 'Weekly allocation', 1),
+  (19, 2, 'allocation', 70000, 'Weekly allocation', 1),
+  (20, 2, 'allocation', 70000, 'Weekly allocation', 1),
+  (21, 2, 'allocation', 70000, 'Weekly allocation', 1),
+  (22, 2, 'allocation', 70000, 'Weekly allocation', 1),
+  (23, 2, 'allocation', 70000, 'Weekly allocation', 1),
+  (24, 2, 'allocation', 70000, 'Weekly allocation', 1),
+  (25, 2, 'allocation', 70000, 'Weekly allocation', 1),
+  (26, 2, 'allocation', 70000, 'Weekly allocation', 1),
+  (27, 2, 'allocation', 70000, 'Weekly allocation', 1),
+  (28, 2, 'allocation', 70000, 'Weekly allocation', 1),
+  (29, 2, 'allocation', 70000, 'Weekly allocation', 1),
   (3, 1, 'allocation', 70000, 'Weekly allocation', 1),
   (4, 1, 'allocation', 70000, 'Weekly allocation', 1);
 
@@ -206,7 +272,7 @@ INSERT INTO order_status_events (order_id, order_item_id, old_status, new_status
 -- Audit trail entries for the seeded administrative work.
 -- ---------------------------------------------------------------------------
 INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, metadata) VALUES
-  (1, 'budget.allocation.created', 'budget_allocation', NULL, '{"period":"2026-W42","teachers":5,"amountPaisa":70000,"source":"seed"}'),
+  (1, 'budget.allocation.created', 'budget_allocation', NULL, '{"period":"2026-W42","teachers":27,"amountPaisa":70000,"source":"seed"}'),
   (1, 'user.created', 'user', 1, '{"role":"ADMIN","source":"seed"}'),
   (1, 'user.created', 'user', 2, '{"role":"STAFF","source":"seed"}');
 
@@ -214,6 +280,6 @@ INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, metadata)
 -- Demo password summary. These are the documented development credentials and
 -- must be changed or deleted before any real deployment.
 -- ---------------------------------------------------------------------------
--- admin@example.edu   / AdminPass123!
--- staff@example.edu   / StaffPass123!
--- teacher@example.edu / TeacherPass123!
+-- admin@juniv.edu   / AdminPass123!
+-- staff@juniv.edu   / StaffPass123!
+-- teacher@juniv.edu / TeacherPass123!
