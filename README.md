@@ -103,11 +103,11 @@ npm run dev:server           # API on http://localhost:4000
 Created by `npm run db:seed`. **Fictional accounts with placeholder passwords —
 change or delete them before any deployment.**
 
-| Role    | Email                 | Password          | Can do                                         |
-| ------- | --------------------- | ----------------- | ---------------------------------------------- |
-| Teacher | `teacher@example.edu` | `TeacherPass123!` | Order meals, view own budget and history       |
-| Staff   | `staff@example.edu`   | `StaffPass123!`   | View all orders, track collection and delivery |
-| Admin   | `admin@example.edu`   | `AdminPass123!`   | Everything, including users, budgets, menus    |
+| Role    | Email               | Password          | Can do                                         |
+| ------- | ------------------- | ----------------- | ---------------------------------------------- |
+| Teacher | `teacher@juniv.edu` | `TeacherPass123!` | Order meals, view own budget and history       |
+| Staff   | `staff@juniv.edu`   | `StaffPass123!`   | View all orders, track collection and delivery |
+| Admin   | `admin@juniv.edu`   | `AdminPass123!`   | Everything, including users, budgets, menus    |
 
 ## Project structure
 

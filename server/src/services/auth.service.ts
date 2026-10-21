@@ -25,6 +25,7 @@ export interface AuthUser {
   fullName: string;
   email: string;
   role: Role;
+  designation?: string | null;
   permissions: Permission[];
 }
 
@@ -33,6 +34,7 @@ export interface RegisterInput {
   email: string;
   password: string;
   role: Role;
+  designation?: string | null;
 }
 
 export interface LoginInput {
@@ -62,6 +64,7 @@ function toAuthUser(row: users.UserRow): AuthUser {
     id: row.id,
     fullName: row.full_name,
     email: row.email,
+    designation: row.designation ?? null,
     // A TEACHER never carries permissions, whatever the row says. The
     // permission list is only meaningful for staff and admin accounts.
     permissions: row.role === 'TEACHER' ? [] : (row.permissions ?? []),

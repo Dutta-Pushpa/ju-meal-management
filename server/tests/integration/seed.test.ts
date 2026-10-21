@@ -153,9 +153,9 @@ describe('seed data', () => {
     }
   });
 
-  it('uses only example.com addresses, so no real personal data is seeded', async () => {
+  it('uses only juniv.edu addresses, so no real personal data is seeded', async () => {
     const rows = await query<{ non_example: string }>(
-      `SELECT count(*)::text AS non_example FROM users WHERE email NOT LIKE '%@example.edu'`,
+      `SELECT count(*)::text AS non_example FROM users WHERE email NOT LIKE '%@juniv.edu'`,
     );
 
     expect(Number(rows[0]?.non_example)).toBe(0);

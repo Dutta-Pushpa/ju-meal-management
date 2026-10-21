@@ -149,23 +149,23 @@ beforeAll(async () => {
   await truncateAll();
   app = createApp({ config, logger: silentLogger, db });
 
-  await seedUser({ email: 'admin@example.edu', role: 'ADMIN' });
+  await seedUser({ email: 'admin@juniv.edu', role: 'ADMIN' });
   await seedUser({
-    email: 'manager@example.edu',
+    email: 'manager@juniv.edu',
     role: 'STAFF',
     permissions: ['locations:manage'],
   });
   await seedUser({
-    email: 'collector@example.edu',
+    email: 'collector@juniv.edu',
     role: 'STAFF',
     permissions: ['orders:manage_status'],
   });
-  teacherId = await seedUser({ email: 'teacher@example.edu', role: 'TEACHER' });
+  teacherId = await seedUser({ email: 'teacher@juniv.edu', role: 'TEACHER' });
 
-  adminToken = await loginToken('admin@example.edu');
-  managerToken = await loginToken('manager@example.edu');
-  collectorToken = await loginToken('collector@example.edu');
-  teacherToken = await loginToken('teacher@example.edu');
+  adminToken = await loginToken('admin@juniv.edu');
+  managerToken = await loginToken('manager@juniv.edu');
+  collectorToken = await loginToken('collector@juniv.edu');
+  teacherToken = await loginToken('teacher@juniv.edu');
 
   // One current period, shared by every test. A second overlapping period would
   // violate the no-overlap constraint, so it is created exactly once here.
