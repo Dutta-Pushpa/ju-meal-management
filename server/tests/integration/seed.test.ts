@@ -58,6 +58,25 @@ describe('seed data', () => {
     expect(await count('budget_ledger')).toBeGreaterThan(0);
   });
 
+  it('seeds the four Bot Tola shops with the shared Bengali menu', async () => {
+    const shops = await query<{ name: string; item_count: string }>(`
+      SELECT l.name, count(m.id)::text AS item_count
+      FROM food_locations l
+      LEFT JOIN menu_items m ON m.food_location_id = l.id
+      WHERE l.name IN ('রাধুনী', 'রাফি', 'নূরজাহান', 'জ্যাক্স কিচেন')
+        AND l.description = 'বটতলা'
+      GROUP BY l.id, l.name
+      ORDER BY l.id
+    `);
+
+    expect(shops).toEqual([
+      { name: 'রাধুনী', item_count: '18' },
+      { name: 'রাফি', item_count: '18' },
+      { name: 'নূরজাহান', item_count: '18' },
+      { name: 'জ্যাক্স কিচেন', item_count: '18' },
+    ]);
+  });
+
   it('leaves no plaintext password anywhere in the database', async () => {
     const rows = await query<{ count: string }>(
       `SELECT count(*)::text AS count FROM users
