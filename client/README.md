@@ -1,14 +1,47 @@
-# Client
+# Client — JU Meal Management System
 
-Placeholder for the React frontend. The application is built in Phase 10,
-after the API and database are complete and tested.
+React + Vite + TypeScript frontend connected to the existing Express API. It
+does not embed demo arrays or compute business metrics from made-up values;
+menus, budgets, orders, reports, user accounts, locations, settings, and status
+changes come from authenticated API requests backed by PostgreSQL.
 
-## Planned
+## Local development
 
-- Vite + React + TypeScript
-- Teacher portal: dashboard, locations, menu, order, order history, budget
-- Staff portal: daily dashboard, grouped collection view, print sheet, reports
-- Admin screens: users, budget allocation, menu and location management
-- JWT held in memory only, never `localStorage`
+From the repository root, after configuring `.env`, starting Docker PostgreSQL,
+applying migrations, and seeding data (see the root README):
 
-Until then, the API can be exercised with Postman or Newman.
+```bash
+npm install
+npm run dev:server   # terminal 1; http://localhost:4000
+npm run dev:client   # terminal 2; http://localhost:5173
+```
+
+Vite proxies `/api` and `/health` to the backend. Set `VITE_API_URL` only when
+the API is hosted at a different base path.
+
+## Implemented frontend areas
+
+- **Teacher:** budget overview, active food locations and menus, multi-item cart,
+  order placement, order history/cancellation, and ledger history.
+- **Staff:** daily order operations, location/status/date filtering, collection and
+  delivery transitions, daily and period budget reports.
+- **Admin / authorized staff:** location and menu management, user activation and
+  permissions where authorized, budget-period/allocation/adjustment management,
+  individual ledger lookup, and runtime settings.
+- **Access:** navigation is filtered by the authenticated role/permission list;
+  the API remains authoritative and rejects unauthorized requests.
+
+Access tokens are held in memory only, never persisted in `localStorage`. A page
+refresh therefore requires signing in again. This intentionally avoids storing a
+long-lived bearer token in browser storage.
+
+## Checks
+
+```bash
+npm run typecheck --workspace client
+npm run build --workspace client
+```
+
+These commands require the workspace dependencies installed by `npm install`.
+The client is an MVP and needs browser-based end-to-end testing plus deployment
+security/configuration review before production use.

@@ -40,7 +40,7 @@ export type Permission = (typeof PERMISSIONS)[number];
  * Stable machine-readable error codes. Clients branch on `code`, never on the
  * human-readable `message`, which may be reworded at any time.
  *
- * Keep this in sync with the table in docs/development.md.
+ * Keep this in sync with the table in docs/api.md.
  */
 export const ERROR_CODES = [
   'VALIDATION_ERROR',

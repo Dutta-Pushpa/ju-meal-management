@@ -9,9 +9,6 @@ import {
 } from '../services/settings.service.js';
 import { badRequest } from '../utils/errors.js';
 import { requireBoolean, requireObject, requireString } from '../utils/validation.js';
-import { isClockTime, isValidTimeZone } from '../utils/time.js';
-import { hasField } from '../utils/request.js';
-import { presentSetting } from '../views/settings.view.js';
 
 export function getSettings(db: Database) {
   return async (_req: Request, res: Response): Promise<void> => {
@@ -26,7 +23,7 @@ export function patchSetting(db: Database) {
     if (!key || !SETTING_KEYS.includes(key as SettingKey))
       throw badRequest('Unsupported setting key.');
     const body = requireObject(req.body ?? {}, 'body');
-    if (!hasField(body, 'value')) throw badRequest('value is required.');
+    if (!Object.hasOwn(body, 'value')) throw badRequest('value is required.');
     const value = validateSetting(key as SettingKey, body['value']);
     const row = await updateSetting(db, key as SettingKey, value, currentUser(req).id);
     res.status(200).json({ data: presentSetting(row) });
@@ -36,13 +33,18 @@ export function patchSetting(db: Database) {
 function validateSetting(key: SettingKey, value: unknown): unknown {
   if (key === 'order_cutoff_time') {
     const time = requireString(value, 'value');
-    if (!isClockTime(time)) throw badRequest('value must be a valid HH:mm time.');
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time))
+      throw badRequest('value must be a valid HH:mm time.');
     return time;
   }
   if (key === 'budget_rollover') return requireBoolean(value, 'value');
   if (key === 'timezone') {
     const timezone = requireString(value, 'value');
-    if (!isValidTimeZone(timezone)) throw badRequest('value must be a valid IANA timezone.');
+    try {
+      new Intl.DateTimeFormat('en', { timeZone: timezone });
+    } catch {
+      throw badRequest('value must be a valid IANA timezone.');
+    }
     return timezone;
   }
   if (
@@ -58,4 +60,20 @@ function validateSetting(key: SettingKey, value: unknown): unknown {
   )
     throw badRequest('value must be an array of valid YYYY-MM-DD dates (up to 366).');
   return [...new Set(value)];
+}
+
+function presentSetting(row: {
+  key: string;
+  value: unknown;
+  description: string | null;
+  updated_by: number | null;
+  updated_at: Date;
+}) {
+  return {
+    key: row.key,
+    value: row.value,
+    description: row.description,
+    updatedBy: row.updated_by,
+    updatedAt: row.updated_at.toISOString(),
+  };
 }

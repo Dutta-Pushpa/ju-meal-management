@@ -21,6 +21,9 @@ const config: AppConfig = {
   JWT_EXPIRES_IN_MINUTES: 15,
   BCRYPT_COST: 10,
   APP_TIMEZONE: 'Asia/Dhaka',
+  ORDER_CUTOFF_TIME: '12:00',
+  BUDGET_ROLLOVER: false,
+  DEFAULT_WEEKLY_BUDGET_PAISA: 70_000,
   CORS_ORIGIN: ['http://localhost:5173'],
   TRUST_PROXY: false,
   RATE_LIMIT_WINDOW_MINUTES: 15,
@@ -86,18 +89,18 @@ beforeAll(async () => {
   db = getPool();
   await truncateAll();
   app = createApp({ config, logger: silentLogger, db });
-  teacherId = await seedUser('order-teacher@example.edu', 'TEACHER');
-  await seedUser('other-teacher@example.edu', 'TEACHER');
-  const adminId = await seedUser('order-admin@example.edu', 'ADMIN');
-  await seedUser('order-staff@example.edu', 'STAFF', [
+  teacherId = await seedUser('order-teacher@juniv.edu', 'TEACHER');
+  await seedUser('other-teacher@juniv.edu', 'TEACHER');
+  const adminId = await seedUser('order-admin@juniv.edu', 'ADMIN');
+  await seedUser('order-staff@juniv.edu', 'STAFF', [
     'orders:cancel',
     'orders:manage_status',
     'budgets:view',
   ]);
-  teacherToken = await login('order-teacher@example.edu');
-  otherTeacherToken = await login('other-teacher@example.edu');
-  adminToken = await login('order-admin@example.edu');
-  staffToken = await login('order-staff@example.edu');
+  teacherToken = await login('order-teacher@juniv.edu');
+  otherTeacherToken = await login('other-teacher@juniv.edu');
+  adminToken = await login('order-admin@juniv.edu');
+  staffToken = await login('order-staff@juniv.edu');
 
   await query(`INSERT INTO food_locations (name) VALUES ('Order location'), ('Other location')`);
   const locations = await query<{ id: number; name: string }>(

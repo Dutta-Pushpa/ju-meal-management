@@ -3,11 +3,11 @@ import type { Database } from '../db/pool.js';
 import { badRequest } from '../utils/errors.js';
 import {
   requireBoolean,
+  requireInt,
   requireObject,
-  requireOptionalString,
   requireString,
+  ValidationError,
 } from '../utils/validation.js';
-import { hasField, readPathId } from '../utils/request.js';
 import { currentUser } from '../middleware/auth.js';
 import {
   createLocation as createLocationService,
@@ -19,6 +19,7 @@ import {
   type UpdateLocationInput,
 } from '../services/location.service.js';
 import { presentLocation, presentLocationList } from '../views/location.view.js';
+import { listAllLocations } from '../models/location.model.js';
 
 /**
  * Location controller.
@@ -46,7 +47,7 @@ export function listLocations(deps: LocationControllerDeps) {
 /** GET /api/locations/:id */
 export function getLocation(deps: LocationControllerDeps) {
   return async (req: Request, res: Response): Promise<void> => {
-    const row = await getLocationService(deps, readPathId(req));
+    const row = await getLocationService(deps, readId(req));
     res.status(200).json({ data: presentLocation(row) });
   };
 }
@@ -55,15 +56,12 @@ export function getLocation(deps: LocationControllerDeps) {
 export function createLocation(deps: LocationControllerDeps) {
   return async (req: Request, res: Response): Promise<void> => {
     const actor = currentUser(req);
-    const body = requireObject(req.body ?? {}, 'body');
+    const body = readBody(req);
 
     const input: CreateLocationInput = {
       name: requireString(body['name'], 'name', { minLength: 1, maxLength: NAME_MAX_LENGTH }),
-      nameBn:
-        requireOptionalString(body['nameBn'], 'nameBn', { maxLength: NAME_MAX_LENGTH }) ?? null,
-      description:
-        requireOptionalString(body['description'], 'description', { maxLength: TEXT_MAX_LENGTH }) ??
-        null,
+      nameBn: optionalText(body['nameBn'], 'nameBn', NAME_MAX_LENGTH),
+      description: optionalText(body['description'], 'description', TEXT_MAX_LENGTH),
     };
 
     const row = await createLocationService(deps, input, actor.id);
@@ -75,31 +73,26 @@ export function createLocation(deps: LocationControllerDeps) {
 export function updateLocation(deps: LocationControllerDeps) {
   return async (req: Request, res: Response): Promise<void> => {
     const actor = currentUser(req);
-    const body = requireObject(req.body ?? {}, 'body');
-    const id = readPathId(req);
+    const body = readBody(req);
+    const id = readId(req);
 
     // Only fields the client actually sent are applied, so an absent field is
     // left untouched rather than blanked out.
     const patch: UpdateLocationInput = {};
 
-    if (hasField(body, 'name')) {
+    if (has(body, 'name')) {
       patch.name = requireString(body['name'], 'name', {
         minLength: 1,
         maxLength: NAME_MAX_LENGTH,
       });
     }
-    if (hasField(body, 'nameBn')) {
-      patch.nameBn =
-        requireOptionalString(body['nameBn'], 'nameBn', {
-          maxLength: NAME_MAX_LENGTH,
-        }) ?? null;
+    if (has(body, 'nameBn')) {
+      patch.nameBn = optionalText(body['nameBn'], 'nameBn', NAME_MAX_LENGTH);
     }
-    if (hasField(body, 'description')) {
-      patch.description =
-        requireOptionalString(body['description'], 'description', { maxLength: TEXT_MAX_LENGTH }) ??
-        null;
+    if (has(body, 'description')) {
+      patch.description = optionalText(body['description'], 'description', TEXT_MAX_LENGTH);
     }
-    if (hasField(body, 'isActive')) {
+    if (has(body, 'isActive')) {
       patch.isActive = requireBoolean(body['isActive'], 'isActive');
     }
 
@@ -116,7 +109,60 @@ export function updateLocation(deps: LocationControllerDeps) {
 export function deleteLocation(deps: LocationControllerDeps) {
   return async (req: Request, res: Response): Promise<void> => {
     const actor = currentUser(req);
-    const row = await deactivateLocationService(deps, readPathId(req), actor.id);
+    const row = await deactivateLocationService(deps, readId(req), actor.id);
     res.status(200).json({ data: presentLocation(row) });
+  };
+}
+
+function readBody(req: Request): Record<string, unknown> {
+  return requireObject(req.body ?? {}, 'body');
+}
+
+function has(body: Record<string, unknown>, field: string): boolean {
+  return Object.prototype.hasOwnProperty.call(body, field);
+}
+
+/** The path id must be a positive integer; anything else is a bad request. */
+function readId(req: Request): number {
+  return requireInt(Number(req.params['id']), 'id', { min: 1 });
+}
+
+/**
+ * A nullable text field.
+ *
+ * Missing, `null`, and an empty string all become `null`, which is how a client
+ * clears a value. Anything else must be a string within the length limit.
+ */
+function optionalText(value: unknown, field: string, maxLength: number): string | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (typeof value !== 'string') {
+    throw new ValidationError([
+      { field, issue: 'invalid_type', message: `${field} must be a string or null` },
+    ]);
+  }
+
+  const trimmed = value.trim();
+
+  if (trimmed.length === 0) {
+    return null;
+  }
+
+  if (trimmed.length > maxLength) {
+    throw new ValidationError([
+      { field, issue: 'too_big', message: `${field} must be at most ${maxLength} characters` },
+    ]);
+  }
+
+  return trimmed;
+}
+
+/** GET /api/locations/manage/all — includes inactive rows for managers. */
+export function listAllManagedLocations(deps: LocationControllerDeps) {
+  return async (_req: Request, res: Response): Promise<void> => {
+    const rows = await listAllLocations(deps.db);
+    res.status(200).json({ data: rows.map(presentLocation), meta: { total: rows.length } });
   };
 }

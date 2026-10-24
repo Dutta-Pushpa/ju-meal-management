@@ -2,11 +2,6 @@ import { fileURLToPath } from 'node:url';
 import { config as loadDotenv } from 'dotenv';
 import { Client } from 'pg';
 import { applyMigrations, readMigrations } from '../../db/migrate.js';
-import {
-  ADMIN_DATABASE,
-  databaseNameOf,
-  resolveTestDatabaseUrl,
-} from './helpers/test-database-url.js';
 
 // Load the repo-root .env before reading DATABASE_URL. Vitest runs globalSetup
 // before the per-file setup files, so this cannot rely on tests/setup.ts having
@@ -17,23 +12,35 @@ loadDotenv({ path: fileURLToPath(new URL('../../.env', import.meta.url)) });
 /**
  * Vitest global setup.
  *
- * Points the run at the test database, creates it if it does not exist, and
- * migrates it, so a test never fails because nobody remembered to run the
- * migrations, and a new checkout works with a single `npm test`.
+ * Migrates the test database before any suite runs, so a test never fails
+ * because nobody remembered to run the migrations, and so a new checkout works
+ * with a single `npm test`.
  *
  * The safety guard matters more than the convenience: this connects to whatever
- * `DATABASE_URL` names, and a mistyped URL that pointed at a development or
+ * DATABASE_URL names, and a mistyped URL that pointed at a development or
  * production database would rewrite its schema.
  */
 export async function setup(): Promise<void> {
-  const url = resolveTestDatabaseUrl();
+  const url = process.env['DATABASE_URL'];
+
+  if (!url) {
+    throw new Error(
+      'DATABASE_URL is not set.\n' +
+        'Integration tests need a dedicated database whose name ends in "_test".\n' +
+        'Create one and point DATABASE_URL at it, for example:\n' +
+        '  postgresql://ju_meal:password@localhost:5432/ju_meal_test',
+    );
+  }
+
   const name = databaseNameOf(url);
 
-  // The workers read the connection string from the environment.
-  process.env['DATABASE_URL'] = url;
-  process.env['DATABASE_ADMIN_URL'] = url;
-
-  await createDatabaseIfMissing(url);
+  if (!name.endsWith('_test')) {
+    throw new Error(
+      `Refusing to run tests against database "${name || '(unparseable URL)'}".\n` +
+        'The name must end in "_test". Migrations run for real, so pointing this at a\n' +
+        'development or production database would alter its schema.',
+    );
+  }
 
   const client = new Client({ connectionString: url, application_name: 'ju-meal-test-setup' });
   await client.connect();
@@ -49,53 +56,10 @@ export async function setup(): Promise<void> {
   }
 }
 
-/**
- * Create the test database when it is missing.
- *
- * `CREATE DATABASE` cannot run inside the database being created, so the
- * statement is issued from the maintenance database instead.
- */
-async function createDatabaseIfMissing(url: string): Promise<void> {
-  const name = databaseNameOf(url);
-
-  const adminUrl = new URL(url);
-  adminUrl.pathname = `/${ADMIN_DATABASE}`;
-
-  const admin = new Client({
-    connectionString: adminUrl.toString(),
-    application_name: 'ju-meal-test-setup',
-  });
-
-  await admin.connect();
-
+function databaseNameOf(url: string): string {
   try {
-    const existing = await admin.query('SELECT 1 FROM pg_database WHERE datname = $1', [name]);
-
-    if (existing.rows.length > 0) {
-      return;
-    }
-
-    await admin.query(`CREATE DATABASE "${name}"`);
-    console.log(`Created test database "${name}".`);
-  } catch (error) {
-    const code = (error as { code?: unknown } | null)?.code;
-    const message = error instanceof Error ? error.message : String(error);
-
-    if (
-      code === '42501' ||
-      code === 'EPERM' ||
-      /permission denied|insufficient privilege/i.test(message)
-    ) {
-      throw new Error(
-        `The database role may not create databases, so "${name}" was not created.\n` +
-          'Create it by hand (in Neon: Databases -> New Database) and run this\n' +
-          'command again.',
-        { cause: error },
-      );
-    }
-
-    throw error;
-  } finally {
-    await admin.end();
+    return new URL(url).pathname.replace(/^\//, '');
+  } catch {
+    return '';
   }
 }

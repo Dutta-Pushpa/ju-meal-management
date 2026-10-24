@@ -1,4 +1,5 @@
 import type { Queryable } from '../db/pool.js';
+import type { OrderItemRow } from './order.model.js';
 
 export interface StaffOrderFilters {
   date: string;
@@ -152,6 +153,20 @@ export async function listAllStaffOrdersForDate(
       WHERE o.order_date = $1::date AND o.status <> 'CANCELLED'
       ORDER BY l.name, u.full_name, o.created_at, o.id`,
     [date],
+  );
+  return rows;
+}
+
+export async function findStaffOrderItems(
+  db: Queryable,
+  orderIds: number[],
+): Promise<Array<OrderItemRow & { order_id: number }>> {
+  if (orderIds.length === 0) return [];
+  const { rows } = await db.query<OrderItemRow & { order_id: number }>(
+    `SELECT order_id, id, menu_item_id, item_name_snapshot, unit_price_paisa_snapshot,
+            quantity, line_total_paisa
+       FROM order_items WHERE order_id = ANY($1::bigint[]) ORDER BY order_id, id`,
+    [orderIds],
   );
   return rows;
 }

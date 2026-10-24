@@ -11,7 +11,7 @@ import {
 } from '../services/auth.service.js';
 import { currentUser } from '../middleware/auth.js';
 import { tokenFromHeader } from '../utils/token.js';
-import { badRequest, unauthorized } from '../utils/errors.js';
+import { badRequest, forbidden, unauthorized } from '../utils/errors.js';
 import { requireEnum, requireString, ValidationError } from '../utils/validation.js';
 import { presentLogin, presentUser } from '../views/auth.view.js';
 
@@ -71,18 +71,17 @@ export function register(deps: AuthControllerDeps) {
       ]);
     }
 
-    // A teacher may not create another teacher or an admin by asking nicely.
-    if (actor && actor.role !== 'ADMIN' && role !== 'TEACHER') {
-      throw badRequest('Only an administrator may create staff or admin accounts.');
+    // Public self-registration is teacher-only, even in development. The role
+    // field is user-controlled JSON, so the UI hiding staff/admin choices is not
+    // an authorization control.
+    if (!actor && role !== 'TEACHER') {
+      throw forbidden('Self-registration can only create teacher accounts.');
     }
 
-    // Anonymous self-registration may only ever create a TEACHER. Without this
-    // check, the open dev/test endpoint would mint an administrator for anyone
-    // who asked for one, which is a privilege escalation rather than a
-    // convenience. An administrator who wants staff accounts uses this endpoint
-    // with a token, which is checked above.
-    if (!actor && role !== 'TEACHER') {
-      throw badRequest('Self-registration may only create teacher accounts.');
+    // A staff member with users:create may create teacher accounts, but only an
+    // administrator may create another staff member or an administrator.
+    if (actor && actor.role !== 'ADMIN' && role !== 'TEACHER') {
+      throw badRequest('Only an administrator may create staff or admin accounts.');
     }
 
     const user = await registerUser(deps, { fullName, email, password, role }, actor);

@@ -1,34 +1,5 @@
 import { defineConfig } from 'vitest/config';
 import { fileURLToPath } from 'node:url';
-import { config as loadDotenv } from 'dotenv';
-import { isLocalHost, resolveTestDatabaseUrl } from './tests/helpers/test-database-url.js';
-
-// The repo-root .env holds the connection strings. This file runs with the cwd
-// set to server/, where there is no .env.
-loadDotenv({ path: fileURLToPath(new URL('../.env', import.meta.url)) });
-
-/**
- * The test database is resolved here, in the main process, because the
- * timeouts below are read while this configuration is being loaded, and
- * because a hosted database is slower to create a scratch database and may drop
- * a connection mid-test.
- *
- * A missing connection string is not an error here. The global setup reports it
- * with a message that says what to configure.
- */
-try {
-  const testDatabaseUrl = resolveTestDatabaseUrl();
-  process.env['DATABASE_URL'] = testDatabaseUrl;
-  process.env['DATABASE_ADMIN_URL'] = testDatabaseUrl;
-
-  if (!isLocalHost(new URL(testDatabaseUrl).hostname)) {
-    process.env['VITEST_TEST_TIMEOUT'] ??= '120000';
-    process.env['VITEST_HOOK_TIMEOUT'] ??= '180000';
-    process.env['VITEST_RETRY'] ??= '1';
-  }
-} catch {
-  // Left to the global setup to report.
-}
 
 export default defineConfig({
   test: {
@@ -44,7 +15,7 @@ export default defineConfig({
     fileParallelism: false,
     // Defaults suit a local database. A hosted provider such as Neon can take
     // far longer to create a scratch database and migrate it, so both timeouts
-    // are raised for a run without editing this file, for example:
+    // can be raised for a run without editing this file, for example:
     //   $env:VITEST_TEST_TIMEOUT = 120000; npm test
     testTimeout: Number(process.env['VITEST_TEST_TIMEOUT'] ?? 15_000),
     hookTimeout: Number(process.env['VITEST_HOOK_TIMEOUT'] ?? 30_000),

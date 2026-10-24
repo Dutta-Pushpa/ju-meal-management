@@ -21,6 +21,14 @@ export interface BudgetEntryRow {
   created_at: Date;
 }
 
+export async function findTeacher(db: Queryable, teacherId: number): Promise<boolean> {
+  const { rows } = await db.query<{ id: number }>(
+    `SELECT id FROM users WHERE id = $1 AND role = 'TEACHER' AND is_active FOR UPDATE`,
+    [teacherId],
+  );
+  return rows.length > 0;
+}
+
 export async function teacherExists(db: Queryable, teacherId: number): Promise<boolean> {
   const { rows } = await db.query<{ id: number }>(
     `SELECT id FROM users WHERE id = $1 AND role = 'TEACHER'`,
@@ -136,4 +144,14 @@ export async function insertAdjustment(
     [input.teacherId, input.periodId, input.amountPaisa, input.reason, input.actorUserId],
   );
   return rows[0]!;
+}
+
+/** Budget periods are safe to expose to authenticated users so they can select their own period. */
+export async function listBudgetPeriods(db: Queryable): Promise<BudgetPeriodRow[]> {
+  const { rows } = await db.query<BudgetPeriodRow>(
+    `SELECT id, name, starts_on, ends_on, is_active, created_at
+       FROM budget_periods
+      ORDER BY starts_on DESC, id DESC`,
+  );
+  return rows;
 }

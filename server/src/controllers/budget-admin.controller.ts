@@ -1,9 +1,8 @@
 import type { Request, Response } from 'express';
 import type { Database } from '../db/pool.js';
-import { badRequest } from '../utils/errors.js';
-import { requireInt, requireIsoDate, requireObject, requireString } from '../utils/validation.js';
-import { readIntQuery, requireIntQuery } from '../utils/request.js';
 import { currentUser } from '../middleware/auth.js';
+import { badRequest } from '../utils/errors.js';
+import { requireInt, requireObject, requireString } from '../utils/validation.js';
 import {
   adjustBudget,
   allocateBudget,
@@ -21,8 +20,8 @@ export function createPeriod(db: Database) {
     const actor = currentUser(req);
     const body = requireObject(req.body ?? {}, 'body');
     const name = requireString(body['name'], 'name', { maxLength: NAME_MAX_LENGTH });
-    const startsOn = requireIsoDate(body['startsOn'], 'startsOn');
-    const endsOn = requireIsoDate(body['endsOn'], 'endsOn');
+    const startsOn = requireBusinessDate(body['startsOn'], 'startsOn');
+    const endsOn = requireBusinessDate(body['endsOn'], 'endsOn');
 
     if (endsOn < startsOn) throw badRequest('endsOn must be on or after startsOn.');
 
@@ -83,14 +82,44 @@ export function adjust(db: Database) {
 
 export function getBudgetLedger(db: Database) {
   return async (req: Request, res: Response): Promise<void> => {
-    const teacherId = requireIntQuery(req, 'teacherId', 1, Number.MAX_SAFE_INTEGER);
-    const periodId = requireIntQuery(req, 'period', 1, Number.MAX_SAFE_INTEGER);
-    const page = readIntQuery(req, 'page', 1, 1, 1_000_000);
-    const perPage = readIntQuery(req, 'perPage', 20, 1, 100);
+    const teacherId = readQueryInt(req, 'teacherId');
+    const periodId = readQueryInt(req, 'period');
+    const page = readOptionalQueryInt(req, 'page', 1, 1_000_000);
+    const perPage = readOptionalQueryInt(req, 'perPage', 20, 100);
     const result = await getBudgetLedgerService(db, teacherId, periodId, page, perPage);
     res.status(200).json({
       data: result.entries.map(presentBudgetEntry),
       meta: { total: result.total, page, perPage },
     });
   };
+}
+
+function requireBusinessDate(value: unknown, field: string): string {
+  const date = requireString(value, field);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    throw badRequest(`${field} must be a valid date in YYYY-MM-DD format.`);
+  }
+  const parsed = new Date(`${date}T00:00:00.000Z`);
+  if (Number.isNaN(parsed.valueOf()) || parsed.toISOString().slice(0, 10) !== date) {
+    throw badRequest(`${field} must be a valid date in YYYY-MM-DD format.`);
+  }
+  return date;
+}
+
+function readQueryInt(req: Request, key: string): number {
+  return readOptionalQueryInt(req, key, undefined, Number.MAX_SAFE_INTEGER);
+}
+
+function readOptionalQueryInt(
+  req: Request,
+  key: string,
+  fallback: number | undefined,
+  max: number,
+): number {
+  const raw = req.query[key];
+  if (raw === undefined && fallback !== undefined) return fallback;
+  if (typeof raw !== 'string' || !/^\d+$/.test(raw)) {
+    throw badRequest(`${key} must be a positive integer.`);
+  }
+  return requireInt(Number(raw), key, { min: 1, max });
 }

@@ -2,12 +2,12 @@ import type { NextFunction, Request, Response } from 'express';
 import type { ApiErrorResponse } from '@ju/shared';
 import { isAppError } from '../utils/errors.js';
 import { ValidationError } from '../utils/validation.js';
-import {
-  PG_CHECK_VIOLATION,
-  PG_FOREIGN_KEY_VIOLATION,
-  PG_UNIQUE_VIOLATION,
-} from '../utils/pg-errors.js';
 import type { Logger } from '../utils/logger.js';
+
+/** PostgreSQL error codes we can translate into a meaningful response. */
+const PG_UNIQUE_VIOLATION = '23505';
+const PG_FOREIGN_KEY_VIOLATION = '23503';
+const PG_CHECK_VIOLATION = '23514';
 
 interface PgError extends Error {
   code?: string;
@@ -121,15 +121,72 @@ export function errorHandler(logger: Logger) {
       const constraint = err.constraint ?? 'unknown';
 
       switch (err.code) {
-        case PG_UNIQUE_VIOLATION: {
-          // The constraint name is a schema detail, so it is logged rather than
-          // returned. The client is told only that the value is taken.
-          logger.warn({ ...logContext, constraint }, 'unique constraint violated');
-          res.status(409).json({
-            error: { code: 'EMAIL_ALREADY_EXISTS', message: 'That value is already in use.' },
-          } satisfies ApiErrorResponse);
-          return;
-        }
+
+case PG_UNIQUE_VIOLATION: {
+  // A primary-key collision is a database/application problem,
+  // not proof that the user entered a duplicate value.
+  if (constraint.endsWith('_pkey')) {
+    logger.error(
+      { ...logContext, constraint },
+      'Primary-key collision. Check the corresponding ID sequence.',
+    );
+
+    res.status(500).json({
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'An unexpected error occurred.',
+      },
+    } satisfies ApiErrorResponse);
+    return;
+  }
+
+  // Handle the actual duplicate-email constraint specifically.
+  if (constraint === 'users_email_unique') {
+    logger.warn(
+      { ...logContext, constraint },
+      'Duplicate user email',
+    );
+
+    res.status(409).json({
+      error: {
+        code: 'EMAIL_ALREADY_EXISTS',
+        message: 'An account with that email address already exists.',
+      },
+    } satisfies ApiErrorResponse);
+    return;
+  }
+
+  // Handle the actual food-location name constraint specifically.
+  if (constraint === 'food_locations_name_unique') {
+    logger.warn(
+      { ...logContext, constraint },
+      'Duplicate food location name',
+    );
+
+    res.status(409).json({
+      error: {
+        code: 'LOCATION_ALREADY_EXISTS',
+        message: 'A location with that name already exists.',
+      },
+    } satisfies ApiErrorResponse);
+    return;
+  }
+
+  // Do not incorrectly label unrelated unique violations as email errors.
+  logger.warn(
+    { ...logContext, constraint },
+    'Unique constraint violated',
+  );
+
+res.status(409).json({
+  error: {
+    code: 'DUPLICATE_VALUE',
+    message: 'A record with these unique values already exists.',
+  },
+});
+
+return;
+}
         case PG_FOREIGN_KEY_VIOLATION: {
           logger.warn({ ...logContext, constraint }, 'foreign key violation');
           res.status(422).json({

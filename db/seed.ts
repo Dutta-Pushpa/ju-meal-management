@@ -177,9 +177,9 @@ async function seed(): Promise<void> {
 
     console.log('\nSeed complete. All data is fictional demonstration data.');
     console.log('\nDemo accounts:');
-    console.log(`  ADMIN    admin@example.edu    ${DEMO_PASSWORDS.admin}`);
-    console.log(`  STAFF    staff@example.edu    ${DEMO_PASSWORDS.staff}`);
-    console.log(`  TEACHER  teacher@example.edu  ${DEMO_PASSWORDS.teacher}`);
+    console.log(`  ADMIN    admin@juniv.edu    ${DEMO_PASSWORDS.admin}`);
+    console.log(`  STAFF    staff@juniv.edu    ${DEMO_PASSWORDS.staff}`);
+    console.log(`  TEACHER  teacher@juniv.edu  ${DEMO_PASSWORDS.teacher}`);
     console.log('\nChange or delete these before any real deployment.');
   } catch (error) {
     console.error('\nSeed failed.\n');

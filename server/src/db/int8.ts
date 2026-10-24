@@ -19,4 +19,8 @@ import { types } from 'pg';
  * file for the conversion to apply, including the test helpers, which open
  * their own connections.
  */
-types.setTypeParser(types.builtins.INT8, (value: string) => Number.parseInt(value, 10));
+export function configureInt8Parsing(): void {
+  types.setTypeParser(types.builtins.INT8, (value: string) => Number.parseInt(value, 10));
+}
+
+configureInt8Parsing();

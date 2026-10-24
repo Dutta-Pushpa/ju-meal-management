@@ -25,10 +25,10 @@ beforeAll(async () => {
 
   await query(
     `INSERT INTO users (id, full_name, email, password_hash, role) VALUES
-       (1, 'Admin', 'admin@example.edu', 'hash', 'ADMIN'),
-       (2, 'Staff', 'staff@example.edu', 'hash', 'STAFF'),
-       (3, 'Teacher One', 'teacher@example.edu', 'hash', 'TEACHER'),
-       (4, 'Teacher Two', 'teacher2@example.edu', 'hash', 'TEACHER')`,
+       (1, 'Admin', 'admin@juniv.edu', 'hash', 'ADMIN'),
+       (2, 'Staff', 'staff@juniv.edu', 'hash', 'STAFF'),
+       (3, 'Teacher One', 'teacher@juniv.edu', 'hash', 'TEACHER'),
+       (4, 'Teacher Two', 'teacher2@juniv.edu', 'hash', 'TEACHER')`,
   );
 
   await query(
@@ -65,7 +65,7 @@ describe('users', () => {
       inTransaction((c) =>
         c.query(
           `INSERT INTO users (full_name, email, password_hash, role)
-           VALUES ('X', 'x@example.edu', 'hash', 'SUPERUSER')`,
+           VALUES ('X', 'x@juniv.edu', 'hash', 'SUPERUSER')`,
         ),
       ),
     ).rejects.toThrow(/users_role_check/);
@@ -76,7 +76,7 @@ describe('users', () => {
       inTransaction((c) =>
         c.query(
           `INSERT INTO users (full_name, email, password_hash, role)
-           VALUES ('Duplicate', 'ADMIN@EXAMPLE.EDU', 'hash', 'TEACHER')`,
+           VALUES ('Duplicate', 'ADMIN@juniv.edu', 'hash', 'TEACHER')`,
         ),
       ),
     ).rejects.toThrow(/users_email_unique/);

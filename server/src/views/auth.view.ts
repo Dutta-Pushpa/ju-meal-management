@@ -14,6 +14,7 @@ export interface UserView {
   fullName: string;
   email: string;
   role: Role;
+  designation?: string | null;
   permissions: Permission[];
   isActive: boolean;
   createdAt: string;
@@ -27,6 +28,7 @@ export interface UserView {
  */
 export function presentUser(
   user: Pick<AuthUser, 'id' | 'fullName' | 'email' | 'role' | 'permissions'> & {
+    designation?: string | null;
     isActive?: boolean;
     createdAt?: Date;
   },
@@ -36,6 +38,7 @@ export function presentUser(
     fullName: user.fullName,
     email: user.email,
     role: user.role,
+    designation: user.designation ?? null,
     permissions: user.permissions,
     isActive: user.isActive ?? true,
     createdAt: (user.createdAt ?? new Date()).toISOString(),

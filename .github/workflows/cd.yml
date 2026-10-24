@@ -4,8 +4,8 @@ name: CD
 #
 # Today this publishes a container image for the API to the GitHub Container
 # Registry. Publishing only happens once a Dockerfile exists, so the workflow is
-# inert until one is added. The final job is a deliberately disabled deployment
-# placeholder.
+# inert until Phase 11 adds one. The final job is a deliberately disabled
+# deployment placeholder; see docs/deployment.md for how to turn it on.
 on:
   push:
     tags: ['v*']
@@ -88,7 +88,8 @@ jobs:
   # It runs only when the repository variable DEPLOY_ENABLED is set to the
   # string "true" AND an image was published. Creating the `production`
   # environment also lets reviewers approve every deploy. Replace the step below
-  # with the real deploy once a host is chosen.
+  # with the real deploy once a host is chosen; docs/deployment.md lists the
+  # required secrets and the checklist.
   # ---------------------------------------------------------------------------
   deploy:
     name: Deploy (placeholder)
@@ -102,3 +103,4 @@ jobs:
         run: |
           echo "::warning::Deployment is a placeholder. An image was published to GHCR."
           echo "Choose a host, set the deploy secrets, then replace this job."
+          echo "See docs/deployment.md for the checklist."

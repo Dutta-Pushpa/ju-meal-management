@@ -6,6 +6,7 @@ import {
   deleteLocation,
   getLocation,
   listLocations,
+  listAllManagedLocations,
   updateLocation,
   type LocationControllerDeps,
 } from '../controllers/location.controller.js';
@@ -36,6 +37,7 @@ export function createLocationRouter(deps: {
   const canManage = requireRoleWithPermission(['STAFF'], 'locations:manage');
 
   router.get('/', requireAuth(auth), listLocations(controllerDeps));
+  router.get('/manage/all', requireAuth(auth), canManage, listAllManagedLocations(controllerDeps));
   router.get('/:id', requireAuth(auth), getLocation(controllerDeps));
   router.get('/:id/menu', requireAuth(auth), getMenu(deps.db));
   router.post('/', requireAuth(auth), canManage, createLocation(controllerDeps));
