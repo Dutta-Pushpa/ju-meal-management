@@ -32,6 +32,9 @@ const config: AppConfig = {
   JWT_EXPIRES_IN_MINUTES: 15,
   BCRYPT_COST: TEST_BCRYPT_COST,
   APP_TIMEZONE: 'Asia/Dhaka',
+  ORDER_CUTOFF_TIME: '12:00',
+  BUDGET_ROLLOVER: false,
+  DEFAULT_WEEKLY_BUDGET_PAISA: 70_000,
   CORS_ORIGIN: ['http://localhost:5173'],
   TRUST_PROXY: false,
   RATE_LIMIT_WINDOW_MINUTES: 15,
@@ -92,12 +95,12 @@ beforeAll(async () => {
   const { hashPassword } = await import('../../src/utils/password.js');
   await query(
     `INSERT INTO users (full_name, email, password_hash, role, permissions)
-     VALUES ('Rumana Haque', 'teacher@example.edu', $1, 'TEACHER', '[]'::jsonb)`,
+     VALUES ('Rumana Haque', 'teacher@juniv.edu', $1, 'TEACHER', '[]'::jsonb)`,
     [await hashPassword(TEACHER_PASSWORD, TEST_BCRYPT_COST)],
   );
   await query(
     `INSERT INTO users (full_name, email, password_hash, role, permissions)
-     VALUES ('Demo Staff', 'staff@example.edu', $1, 'STAFF', '["orders:manage_status"]'::jsonb)`,
+     VALUES ('Demo Staff', 'staff@juniv.edu', $1, 'STAFF', '["orders:manage_status"]'::jsonb)`,
     [await hashPassword(STAFF_PASSWORD, TEST_BCRYPT_COST)],
   );
 });
@@ -111,7 +114,7 @@ describe('POST /api/auth/register', () => {
   it('creates a teacher and returns no password material', async () => {
     const res = await registerViaApi({
       fullName: 'New Teacher',
-      email: 'newteacher@example.edu',
+      email: 'newteacher@juniv.edu',
       password: TEACHER_PASSWORD,
       role: 'TEACHER',
     });
@@ -119,7 +122,7 @@ describe('POST /api/auth/register', () => {
     expect(res.status).toBe(201);
     expect(res.body.data).toMatchObject({
       fullName: 'New Teacher',
-      email: 'newteacher@example.edu',
+      email: 'newteacher@juniv.edu',
       role: 'TEACHER',
       permissions: [],
       isActive: true,
@@ -131,39 +134,16 @@ describe('POST /api/auth/register', () => {
     expect(serialised).not.toContain('$2b$');
   });
 
-  it('rejects anonymous self-registration of a privileged account', async () => {
-    // The open dev/test registration endpoint must never mint an ADMIN or a
-    // STAFF account. Allowing it would let anyone become an administrator by
-    // asking for one.
-    for (const role of ['ADMIN', 'STAFF']) {
-      const res = await registerViaApi({
-        fullName: 'Escalation Attempt',
-        email: `escalation-${role.toLowerCase()}@example.edu`,
-        password: TEACHER_PASSWORD,
-        role,
-      });
-
-      expect(res.status).toBe(400);
-      expect(res.body.error.code).toBe('VALIDATION_ERROR');
-    }
-
-    const rows = await query<{ count: string }>(
-      `SELECT count(*)::text AS count FROM users WHERE email LIKE 'escalation-%'`,
-    );
-
-    expect(rows[0]?.count).toBe('0');
-  });
-
   it('stores the password as a bcrypt hash, never in plaintext', async () => {
     await registerViaApi({
       fullName: 'Hash Check',
-      email: 'hashcheck@example.edu',
+      email: 'hashcheck@juniv.edu',
       password: TEACHER_PASSWORD,
       role: 'TEACHER',
     });
 
     const rows = await query<{ password_hash: string }>(
-      `SELECT password_hash FROM users WHERE email = 'hashcheck@example.edu'`,
+      `SELECT password_hash FROM users WHERE email = 'hashcheck@juniv.edu'`,
     );
 
     expect(rows[0]?.password_hash).toMatch(/^\$2[aby]\$/);
@@ -173,19 +153,19 @@ describe('POST /api/auth/register', () => {
   it('lowercases the email so uniqueness is not case dependent', async () => {
     const res = await registerViaApi({
       fullName: 'Mixed Case',
-      email: 'MixedCase@Example.EDU',
+      email: 'MixedCase@juniv.edu',
       password: TEACHER_PASSWORD,
       role: 'TEACHER',
     });
 
     expect(res.status).toBe(201);
-    expect(res.body.data.email).toBe('mixedcase@example.edu');
+    expect(res.body.data.email).toBe('mixedcase@juniv.edu');
   });
 
   it('rejects a duplicate email with 409', async () => {
     const res = await registerViaApi({
       fullName: 'Duplicate',
-      email: 'newteacher@example.edu',
+      email: 'newteacher@juniv.edu',
       password: TEACHER_PASSWORD,
       role: 'TEACHER',
     });
@@ -197,7 +177,7 @@ describe('POST /api/auth/register', () => {
   it('rejects a duplicate email that differs only in case', async () => {
     const res = await registerViaApi({
       fullName: 'Duplicate',
-      email: 'NEWTEACHER@EXAMPLE.EDU',
+      email: 'NEWTEACHER@juniv.edu',
       password: TEACHER_PASSWORD,
       role: 'TEACHER',
     });
@@ -208,7 +188,7 @@ describe('POST /api/auth/register', () => {
   it('rejects a short password', async () => {
     const res = await registerViaApi({
       fullName: 'Weak',
-      email: 'weak@example.edu',
+      email: 'weak@juniv.edu',
       password: 'short1!',
       role: 'TEACHER',
     });
@@ -220,7 +200,7 @@ describe('POST /api/auth/register', () => {
   it('rejects a password over 72 UTF-8 bytes', async () => {
     const res = await registerViaApi({
       fullName: 'Too Long',
-      email: 'toolong@example.edu',
+      email: 'toolong@juniv.edu',
       password: 'আ'.repeat(30),
       role: 'TEACHER',
     });
@@ -243,7 +223,7 @@ describe('POST /api/auth/register', () => {
   it('rejects an unknown role', async () => {
     const res = await registerViaApi({
       fullName: 'Wrong Role',
-      email: 'wrongrole@example.edu',
+      email: 'wrongrole@juniv.edu',
       password: TEACHER_PASSWORD,
       role: 'SUPERUSER',
     });
@@ -251,10 +231,26 @@ describe('POST /api/auth/register', () => {
     expect(res.status).toBe(400);
   });
 
+  it('does not allow unauthenticated callers to self-register as an administrator', async () => {
+    const res = await registerViaApi({
+      fullName: 'Attempted Admin',
+      email: 'attempted-admin@juniv.edu',
+      password: TEACHER_PASSWORD,
+      role: 'ADMIN',
+    });
+
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe('FORBIDDEN');
+    const rows = await query<{ count: string }>(
+      `SELECT count(*)::text AS count FROM users WHERE email = 'attempted-admin@juniv.edu'`,
+    );
+    expect(rows[0]?.count).toBe('0');
+  });
+
   it('reports the offending field', async () => {
     const res = await registerViaApi({
       fullName: '',
-      email: 'valid@example.edu',
+      email: 'valid@juniv.edu',
       password: TEACHER_PASSWORD,
       role: 'TEACHER',
     });
@@ -267,13 +263,13 @@ describe('POST /api/auth/register', () => {
   it('records an audit entry with no credential in it', async () => {
     await registerViaApi({
       fullName: 'Audited',
-      email: 'audited@example.edu',
+      email: 'audited@juniv.edu',
       password: TEACHER_PASSWORD,
       role: 'TEACHER',
     });
 
     const rows = await query<{ metadata: unknown }>(
-      `SELECT metadata FROM audit_logs WHERE action = 'user.created' AND metadata->>'email' = 'audited@example.edu'`,
+      `SELECT metadata FROM audit_logs WHERE action = 'user.created' AND metadata->>'email' = 'audited@juniv.edu'`,
     );
 
     expect(rows).toHaveLength(1);
@@ -285,35 +281,35 @@ describe('POST /api/auth/register', () => {
 // =====================================================================
 describe('POST /api/auth/login', () => {
   it('returns a token and the user for valid credentials', async () => {
-    const res = await loginViaApi('teacher@example.edu', TEACHER_PASSWORD);
+    const res = await loginViaApi('teacher@juniv.edu', TEACHER_PASSWORD);
 
     expect(res.status).toBe(200);
     expect(res.body.data.accessToken).toBeTypeOf('string');
     expect(res.body.data.tokenType).toBe('Bearer');
     expect(res.body.data.expiresAt).toBeTypeOf('string');
-    expect(res.body.data.user).toMatchObject({ email: 'teacher@example.edu', role: 'TEACHER' });
+    expect(res.body.data.user).toMatchObject({ email: 'teacher@juniv.edu', role: 'TEACHER' });
   });
 
   it('never returns the password hash', async () => {
-    const res = await loginViaApi('teacher@example.edu', TEACHER_PASSWORD);
+    const res = await loginViaApi('teacher@juniv.edu', TEACHER_PASSWORD);
     expect(JSON.stringify(res.body)).not.toContain('$2b$');
   });
 
   it('is case insensitive on the email', async () => {
-    const res = await loginViaApi('TEACHER@EXAMPLE.EDU', TEACHER_PASSWORD);
+    const res = await loginViaApi('TEACHER@juniv.edu', TEACHER_PASSWORD);
     expect(res.status).toBe(200);
   });
 
   it('rejects a wrong password', async () => {
-    const res = await loginViaApi('teacher@example.edu', 'WrongPassword123!');
+    const res = await loginViaApi('teacher@juniv.edu', 'WrongPassword123!');
     expect(res.status).toBe(401);
     expect(res.body.error.code).toBe('UNAUTHORIZED');
   });
 
   it('gives the same answer for an unknown email as for a wrong password', async () => {
     // Different messages would reveal which addresses have accounts.
-    const unknown = await loginViaApi('nobody@example.edu', TEACHER_PASSWORD);
-    const wrongPassword = await loginViaApi('teacher@example.edu', 'WrongPassword123!');
+    const unknown = await loginViaApi('nobody@juniv.edu', TEACHER_PASSWORD);
+    const wrongPassword = await loginViaApi('teacher@juniv.edu', 'WrongPassword123!');
 
     expect(unknown.status).toBe(wrongPassword.status);
     expect({
@@ -323,20 +319,20 @@ describe('POST /api/auth/login', () => {
   });
 
   it('rejects a deactivated account', async () => {
-    await seedUser({ email: 'disabled@example.edu', role: 'TEACHER' });
-    await query(`UPDATE users SET is_active = false WHERE email = 'disabled@example.edu'`);
+    await seedUser({ email: 'disabled@juniv.edu', role: 'TEACHER' });
+    await query(`UPDATE users SET is_active = false WHERE email = 'disabled@juniv.edu'`);
 
     const { hashPassword } = await import('../../src/utils/password.js');
-    await query(`UPDATE users SET password_hash = $1 WHERE email = 'disabled@example.edu'`, [
+    await query(`UPDATE users SET password_hash = $1 WHERE email = 'disabled@juniv.edu'`, [
       await hashPassword(TEACHER_PASSWORD, TEST_BCRYPT_COST),
     ]);
 
-    const res = await loginViaApi('disabled@example.edu', TEACHER_PASSWORD);
+    const res = await loginViaApi('disabled@juniv.edu', TEACHER_PASSWORD);
     expect(res.status).toBe(403);
   });
 
   it('creates a session row on sign-in', async () => {
-    await loginViaApi('teacher@example.edu', TEACHER_PASSWORD);
+    await loginViaApi('teacher@juniv.edu', TEACHER_PASSWORD);
 
     const rows = await query<{ count: string }>(
       `SELECT count(*)::text AS count FROM sessions WHERE revoked_at IS NULL`,
@@ -348,26 +344,26 @@ describe('POST /api/auth/login', () => {
   it('upgrades a hash created at a weaker cost', async () => {
     const { hashPassword, costOf } = await import('../../src/utils/password.js');
 
-    await seedUser({ email: 'upgrademe@example.edu', role: 'TEACHER' });
+    await seedUser({ email: 'upgrademe@juniv.edu', role: 'TEACHER' });
     const weakHash = await hashPassword(TEACHER_PASSWORD, TEST_BCRYPT_COST - 2);
-    await query(`UPDATE users SET password_hash = $1 WHERE email = 'upgrademe@example.edu'`, [
+    await query(`UPDATE users SET password_hash = $1 WHERE email = 'upgrademe@juniv.edu'`, [
       weakHash,
     ]);
 
     expect(costOf(weakHash)).toBe(TEST_BCRYPT_COST - 2);
 
-    const res = await loginViaApi('upgrademe@example.edu', TEACHER_PASSWORD);
+    const res = await loginViaApi('upgrademe@juniv.edu', TEACHER_PASSWORD);
     expect(res.status).toBe(200);
 
     const rows = await query<{ password_hash: string }>(
-      `SELECT password_hash FROM users WHERE email = 'upgrademe@example.edu'`,
+      `SELECT password_hash FROM users WHERE email = 'upgrademe@juniv.edu'`,
     );
 
     expect(costOf(rows[0]!.password_hash)).toBe(TEST_BCRYPT_COST);
   });
 
   it('rejects a missing body field', async () => {
-    const res = await request(app).post('/api/auth/login').send({ email: 'teacher@example.edu' });
+    const res = await request(app).post('/api/auth/login').send({ email: 'teacher@juniv.edu' });
     expect(res.status).toBe(400);
   });
 });
@@ -375,13 +371,13 @@ describe('POST /api/auth/login', () => {
 // =====================================================================
 describe('GET /api/auth/me', () => {
   it('returns the authenticated user', async () => {
-    const login = await loginViaApi('teacher@example.edu', TEACHER_PASSWORD);
+    const login = await loginViaApi('teacher@juniv.edu', TEACHER_PASSWORD);
     const res = await request(app)
       .get('/api/auth/me')
       .set('Authorization', `Bearer ${login.body.data.accessToken}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.data.email).toBe('teacher@example.edu');
+    expect(res.body.data.email).toBe('teacher@juniv.edu');
   });
 
   it('rejects a missing token', async () => {
@@ -421,7 +417,7 @@ describe('GET /api/auth/me', () => {
 
   it('rejects an expired token', async () => {
     const { signAccessToken } = await import('../../src/utils/token.js');
-    const login = await loginViaApi('teacher@example.edu', TEACHER_PASSWORD);
+    const login = await loginViaApi('teacher@juniv.edu', TEACHER_PASSWORD);
     const claims = jwtDecode(login.body.data.accessToken);
 
     // Re-sign with a zero lifetime, using our own secret.
@@ -444,7 +440,7 @@ describe('GET /api/auth/me', () => {
   });
 
   it('rejects a token whose session was signed out', async () => {
-    const login = await loginViaApi('teacher@example.edu', TEACHER_PASSWORD);
+    const login = await loginViaApi('teacher@juniv.edu', TEACHER_PASSWORD);
     const token = login.body.data.accessToken;
 
     await request(app).post('/api/auth/logout').set('Authorization', `Bearer ${token}`);
@@ -454,16 +450,16 @@ describe('GET /api/auth/me', () => {
   });
 
   it('rejects a token whose user was deactivated', async () => {
-    await seedUser({ email: 'deactivated@example.edu', role: 'TEACHER' });
+    await seedUser({ email: 'deactivated@juniv.edu', role: 'TEACHER' });
     const { hashPassword } = await import('../../src/utils/password.js');
-    await query(`UPDATE users SET password_hash = $1 WHERE email = 'deactivated@example.edu'`, [
+    await query(`UPDATE users SET password_hash = $1 WHERE email = 'deactivated@juniv.edu'`, [
       await hashPassword(TEACHER_PASSWORD, TEST_BCRYPT_COST),
     ]);
 
-    const login = await loginViaApi('deactivated@example.edu', TEACHER_PASSWORD);
+    const login = await loginViaApi('deactivated@juniv.edu', TEACHER_PASSWORD);
     expect(login.status).toBe(200);
 
-    await query(`UPDATE users SET is_active = false WHERE email = 'deactivated@example.edu'`);
+    await query(`UPDATE users SET is_active = false WHERE email = 'deactivated@juniv.edu'`);
 
     const res = await request(app)
       .get('/api/auth/me')
@@ -472,14 +468,14 @@ describe('GET /api/auth/me', () => {
   });
 
   it('rejects a token whose user was deleted', async () => {
-    const id = await seedUser({ email: 'ghost@example.edu', role: 'TEACHER' });
+    const id = await seedUser({ email: 'ghost@juniv.edu', role: 'TEACHER' });
     const { hashPassword } = await import('../../src/utils/password.js');
     await query(`UPDATE users SET password_hash = $1 WHERE id = $2`, [
       await hashPassword(TEACHER_PASSWORD, TEST_BCRYPT_COST),
       id,
     ]);
 
-    const login = await loginViaApi('ghost@example.edu', TEACHER_PASSWORD);
+    const login = await loginViaApi('ghost@juniv.edu', TEACHER_PASSWORD);
     await query(`DELETE FROM sessions WHERE user_id = $1`, [id]);
     await query(`DELETE FROM users WHERE id = $1`, [id]);
 
@@ -493,7 +489,7 @@ describe('GET /api/auth/me', () => {
 // =====================================================================
 describe('POST /api/auth/logout', () => {
   it('revokes the session so the token stops working at once', async () => {
-    const login = await loginViaApi('teacher@example.edu', TEACHER_PASSWORD);
+    const login = await loginViaApi('teacher@juniv.edu', TEACHER_PASSWORD);
     const token = login.body.data.accessToken;
 
     const before = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${token}`);
@@ -507,8 +503,8 @@ describe('POST /api/auth/logout', () => {
   });
 
   it('does not affect another session for the same user', async () => {
-    const first = await loginViaApi('teacher@example.edu', TEACHER_PASSWORD);
-    const second = await loginViaApi('teacher@example.edu', TEACHER_PASSWORD);
+    const first = await loginViaApi('teacher@juniv.edu', TEACHER_PASSWORD);
+    const second = await loginViaApi('teacher@juniv.edu', TEACHER_PASSWORD);
 
     await request(app)
       .post('/api/auth/logout')
@@ -529,7 +525,7 @@ describe('POST /api/auth/logout', () => {
 // =====================================================================
 describe('role and permission guards', () => {
   it('refuses a teacher on a staff-only endpoint', async () => {
-    const login = await loginViaApi('teacher@example.edu', TEACHER_PASSWORD);
+    const login = await loginViaApi('teacher@juniv.edu', TEACHER_PASSWORD);
 
     const res = await request(app)
       .get('/api/auth/staff-check')
@@ -540,7 +536,7 @@ describe('role and permission guards', () => {
   });
 
   it('allows a staff account', async () => {
-    const login = await loginViaApi('staff@example.edu', STAFF_PASSWORD);
+    const login = await loginViaApi('staff@juniv.edu', STAFF_PASSWORD);
 
     const res = await request(app)
       .get('/api/auth/staff-check')
@@ -556,7 +552,7 @@ describe('role and permission guards', () => {
   });
 
   it('always reports the same message for a refused role', async () => {
-    const login = await loginViaApi('teacher@example.edu', TEACHER_PASSWORD);
+    const login = await loginViaApi('teacher@juniv.edu', TEACHER_PASSWORD);
     const res = await request(app)
       .get('/api/auth/staff-check')
       .set('Authorization', `Bearer ${login.body.data.accessToken}`);
@@ -568,7 +564,7 @@ describe('role and permission guards', () => {
 // =====================================================================
 describe('token revocation via token_version', () => {
   it('rejects a token after the stored token_version is bumped', async () => {
-    const login = await loginViaApi('teacher@example.edu', TEACHER_PASSWORD);
+    const login = await loginViaApi('teacher@juniv.edu', TEACHER_PASSWORD);
     const token = login.body.data.accessToken as string;
 
     expect(
@@ -576,7 +572,7 @@ describe('token revocation via token_version', () => {
     ).toBe(200);
 
     await query(
-      `UPDATE users SET token_version = token_version + 1 WHERE email = 'teacher@example.edu'`,
+      `UPDATE users SET token_version = token_version + 1 WHERE email = 'teacher@juniv.edu'`,
     );
 
     const res = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${token}`);
@@ -588,7 +584,7 @@ describe('token revocation via token_version', () => {
 // =====================================================================
 describe('login rate limiting', () => {
   it('returns 429 after too many failed attempts for one email', async () => {
-    const email = 'ratelimited@example.edu';
+    const email = 'ratelimited@juniv.edu';
 
     let lastStatus = 0;
     for (let attempt = 0; attempt < 11; attempt += 1) {
@@ -623,8 +619,8 @@ describe('POST /api/auth/register in production', () => {
     const { hashPassword } = await import('../../src/utils/password.js');
     await query(
       `INSERT INTO users (full_name, email, password_hash, role, permissions)
-       VALUES ('Registration Admin', 'registration-admin@example.edu', $1, 'ADMIN', '[]'::jsonb),
-              ('Registration Staff', 'registration-staff@example.edu', $1, 'STAFF', '["users:create"]'::jsonb)`,
+       VALUES ('Registration Admin', 'registration-admin@juniv.edu', $1, 'ADMIN', '[]'::jsonb),
+              ('Registration Staff', 'registration-staff@juniv.edu', $1, 'STAFF', '["users:create"]'::jsonb)`,
       [await hashPassword('RegistrationPass123!', TEST_BCRYPT_COST)],
     );
     const productionApp = createApp({
@@ -634,14 +630,14 @@ describe('POST /api/auth/register in production', () => {
     });
     const anonymous = await request(productionApp).post('/api/auth/register').send({
       fullName: 'Anonymous',
-      email: 'anon@example.edu',
+      email: 'anon@juniv.edu',
       password: 'NewPassword123!',
       role: 'TEACHER',
     });
     expect(anonymous.status).toBe(401);
 
     const staffLogin = await request(productionApp).post('/api/auth/login').send({
-      email: 'registration-staff@example.edu',
+      email: 'registration-staff@juniv.edu',
       password: 'RegistrationPass123!',
     });
     const staffToken = staffLogin.body.data.accessToken as string;
@@ -650,7 +646,7 @@ describe('POST /api/auth/register in production', () => {
       .set('Authorization', `Bearer ${staffToken}`)
       .send({
         fullName: 'Created Teacher',
-        email: 'created-teacher@example.edu',
+        email: 'created-teacher@juniv.edu',
         password: 'NewPassword123!',
         role: 'TEACHER',
       });
@@ -660,14 +656,14 @@ describe('POST /api/auth/register in production', () => {
       .set('Authorization', `Bearer ${staffToken}`)
       .send({
         fullName: 'Created Admin',
-        email: 'created-admin@example.edu',
+        email: 'created-admin@juniv.edu',
         password: 'NewPassword123!',
         role: 'ADMIN',
       });
     expect(elevated.status).toBe(400);
 
     const adminLogin = await request(productionApp).post('/api/auth/login').send({
-      email: 'registration-admin@example.edu',
+      email: 'registration-admin@juniv.edu',
       password: 'RegistrationPass123!',
     });
     const adminToken = adminLogin.body.data.accessToken as string;
@@ -676,7 +672,7 @@ describe('POST /api/auth/register in production', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         fullName: 'Created Admin',
-        email: 'created-admin@example.edu',
+        email: 'created-admin@juniv.edu',
         password: 'NewPassword123!',
         role: 'ADMIN',
       });

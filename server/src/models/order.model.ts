@@ -55,6 +55,14 @@ export async function findByIdempotencyKey(
   return rows[0]?.id;
 }
 
+export async function lockTeacher(db: Queryable, teacherId: number): Promise<boolean> {
+  const { rows } = await db.query<{ id: number }>(
+    `SELECT id FROM users WHERE id = $1 AND role = 'TEACHER' AND is_active FOR UPDATE`,
+    [teacherId],
+  );
+  return rows.length > 0;
+}
+
 export async function checkOrderingRules(
   db: Queryable,
   orderDate: string,
@@ -267,12 +275,6 @@ export async function listTeacherOrders(
   return rows;
 }
 
-/**
- * The items of several orders at once.
- *
- * One query for a page of orders is much cheaper than one query per order, and
- * the result is grouped by `order_id` for the caller.
- */
 export async function findItemsForOrders(db: Queryable, orderIds: number[]) {
   if (orderIds.length === 0) return [];
   const { rows } = await db.query<OrderItemRow & { order_id: number }>(
@@ -282,29 +284,6 @@ export async function findItemsForOrders(db: Queryable, orderIds: number[]) {
     [orderIds],
   );
   return rows;
-}
-
-/**
- * Group order items by the order they belong to.
- *
- * The teacher order list and the staff views all load a page of orders and
- * then need each order's items. One query for the page and one grouping pass
- * is much cheaper than a query per order.
- */
-export function groupItemsByOrder<T extends { order_id: number }>(items: T[]): Map<number, T[]> {
-  const grouped = new Map<number, T[]>();
-
-  for (const item of items) {
-    const bucket = grouped.get(item.order_id);
-
-    if (bucket) {
-      bucket.push(item);
-    } else {
-      grouped.set(item.order_id, [item]);
-    }
-  }
-
-  return grouped;
 }
 
 export async function lockOrderForCancellation(

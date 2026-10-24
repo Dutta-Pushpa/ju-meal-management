@@ -16,6 +16,7 @@ export interface UserRow {
   email: string;
   password_hash: string;
   role: Role;
+  designation?: string | null;
   permissions: Permission[];
   is_active: boolean;
   token_version: number;
@@ -25,7 +26,7 @@ export interface UserRow {
 
 /** Columns that are always returned. The password hash is added only where needed. */
 const USER_COLUMNS = `
-  id, full_name, email, password_hash, role, permissions, is_active,
+  id, full_name, email, password_hash, role, designation, permissions, is_active,
   token_version, created_at, updated_at
 `;
 
@@ -34,19 +35,21 @@ export interface CreateUserInput {
   email: string;
   passwordHash: string;
   role: Role;
+  designation?: string | null;
   permissions: Permission[];
 }
 
 export async function insertUser(db: Queryable, input: CreateUserInput): Promise<UserRow> {
   const { rows } = await db.query<UserRow>(
-    `INSERT INTO users (full_name, email, password_hash, role, permissions)
-     VALUES ($1, $2, $3, $4, $5::jsonb)
+    `INSERT INTO users (full_name, email, password_hash, role, designation, permissions)
+     VALUES ($1, $2, $3, $4, $5, $6::jsonb)
      RETURNING ${USER_COLUMNS}`,
     [
       input.fullName,
       input.email,
       input.passwordHash,
       input.role,
+      input.designation ?? null,
       JSON.stringify(input.permissions),
     ],
   );
@@ -92,22 +95,6 @@ export async function countOtherActiveAdmins(db: Queryable, userId: number): Pro
   return rows[0]!.count;
 }
 
-/**
- * Lock an active teacher row and report whether it exists.
- *
- * The row lock is what serialises concurrent orders by the same teacher, so
- * two simultaneous requests cannot both read the same balance and both
- * succeed. It is taken before the balance is read, inside the order
- * transaction.
- */
-export async function lockActiveTeacher(db: Queryable, teacherId: number): Promise<boolean> {
-  const { rows } = await db.query<{ id: number }>(
-    `SELECT id FROM users WHERE id = $1 AND role = 'TEACHER' AND is_active FOR UPDATE`,
-    [teacherId],
-  );
-  return rows.length > 0;
-}
-
 export async function updateManagedUser(
   db: Queryable,
   userId: number,
@@ -143,6 +130,43 @@ export async function updatePasswordHash(
   passwordHash: string,
 ): Promise<void> {
   await db.query('UPDATE users SET password_hash = $2 WHERE id = $1', [userId, passwordHash]);
+}
+
+/** Increment the token version, invalidating every token the user holds. */
+export async function bumpTokenVersion(db: Queryable, userId: number): Promise<number> {
+  const { rows } = await db.query<{ token_version: number }>(
+    `UPDATE users SET token_version = token_version + 1 WHERE id = $1 RETURNING token_version`,
+    [userId],
+  );
+
+  return rows[0]!.token_version;
+}
+
+export async function setUserActive(
+  db: Queryable,
+  userId: number,
+  isActive: boolean,
+): Promise<UserRow | undefined> {
+  const { rows } = await db.query<UserRow>(
+    `UPDATE users SET is_active = $2 WHERE id = $1 RETURNING ${USER_COLUMNS}`,
+    [userId, isActive],
+  );
+
+  return rows[0];
+}
+
+export async function updateUserRoleAndPermissions(
+  db: Queryable,
+  userId: number,
+  role: Role,
+  permissions: Permission[],
+): Promise<UserRow | undefined> {
+  const { rows } = await db.query<UserRow>(
+    `UPDATE users SET role = $2, permissions = $3::jsonb WHERE id = $1 RETURNING ${USER_COLUMNS}`,
+    [userId, role, JSON.stringify(permissions)],
+  );
+
+  return rows[0];
 }
 
 // ---------------------------------------------------------------------
@@ -214,4 +238,56 @@ export async function revokeSession(db: Queryable, sessionId: string): Promise<b
   );
 
   return (result.rowCount ?? 0) > 0;
+}
+
+export async function revokeAllSessionsForUser(db: Queryable, userId: number): Promise<number> {
+  const result = await db.query(
+    `UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`,
+    [userId],
+  );
+
+  return result.rowCount ?? 0;
+}
+
+/** Safe user list for staff administration; never selects password hashes or token versions. */
+export async function listManagedUsers(db: Queryable): Promise<
+  Array<{
+    id: number;
+    full_name: string;
+    email: string;
+    role: Role;
+    designation: string | null;
+    permissions: Permission[];
+    is_active: boolean;
+    created_at: Date;
+  }>
+> {
+  const { rows } = await db.query<{
+    id: number;
+    full_name: string;
+    email: string;
+    role: Role;
+    designation: string | null;
+    permissions: Permission[];
+    is_active: boolean;
+    created_at: Date;
+  }>(
+    `SELECT id, full_name, email, role, designation, permissions, is_active, created_at
+       FROM users
+      ORDER BY CASE role WHEN 'ADMIN' THEN 0 WHEN 'STAFF' THEN 1 ELSE 2 END,
+               full_name, id`,
+  );
+  return rows;
+}
+
+/** Active teacher choices for budget allocation; returns no authentication secrets. */
+export async function listActiveTeachers(
+  db: Queryable,
+): Promise<Array<{ id: number; full_name: string; email: string }>> {
+  const { rows } = await db.query<{ id: number; full_name: string; email: string }>(
+    `SELECT id, full_name, email FROM users
+      WHERE role = 'TEACHER' AND is_active
+      ORDER BY full_name, id`,
+  );
+  return rows;
 }

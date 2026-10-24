@@ -6,16 +6,16 @@ Schema design, conventions, and the migration process.
 
 ## Conventions
 
-| Concern             | Rule                                                                                                           |
-| ------------------- | -------------------------------------------------------------------------------------------------------------- |
-| Money               | `bigint` holding integer paisa. ৳1 = 100 paisa. Never `float`, and never `numeric` with a scale                |
-| Timestamps          | `timestamptz`, written in UTC                                                                                  |
-| Business dates      | `date`, holding the `Asia/Dhaka` calendar day                                                                  |
-| Primary keys        | `bigserial` for entities, `uuid` for sessions                                                                  |
-| Naming              | `snake_case` tables and columns; `created_at` / `updated_at` on every mutable table                            |
-| Soft deletion       | `is_active boolean` on locations and menu items. Historical tables are never deleted                           |
-| Enumerations        | `text` with a `CHECK` constraint. No native PostgreSQL enum types, so adding a value is not a migration hazard |
-| Deleting money rows | Not supported at any permission level                                                                          |
+| Concern                    | Rule                                                                                                           |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Money                      | `bigint` holding integer paisa. ৳1 = 100 paisa. Never `float` or `numeric` with a scale for arithmetic         |
+| Timestamps                 | `timestamptz`, written in UTC                                                                                  |
+| Business dates             | `date`, holding the `Asia/Dhaka` calendar day                                                                  |
+| Primary keys               | `bigserial` for entities, `uuid` for sessions                                                                  |
+| Naming                     | `snake_case` tables and columns; `created_at` / `updated_at` on every mutable table                            |
+| Soft deletion              | `is_active boolean` on locations and menu items. Historical tables are never deleted                           |
+| Enumerations               | `text` with a `CHECK` constraint. No native PostgreSQL enum types, so adding a value is not a migration hazard |
+| Deletion of financial data | Not supported at any permission level                                                                          |
 
 ## Entity relationships
 
@@ -31,9 +31,105 @@ erDiagram
     food_locations ||--o{ menu_items : offers
     food_locations ||--o{ orders : "ordered from"
     orders ||--|{ order_items : contains
-    orders ||--|{ order_status_events : logs
+    orders ||--o{ order_status_events : logs
     order_items ||--o{ order_status_events : logs
     users ||--o{ audit_logs : acts
+
+    users {
+        bigserial id PK
+        text full_name
+        text email UK
+        text password_hash
+        text role
+        text designation "nullable"
+        text permissions "JSON array, empty for TEACHER"
+        boolean is_active
+        integer token_version
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    food_locations {
+        bigserial id PK
+        text name UK
+        text name_bn
+        text description
+        boolean is_active
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    menu_items {
+        bigserial id PK
+        bigint food_location_id FK
+        text name
+        text description
+        text category
+        bigint price_paisa
+        boolean is_available
+        boolean is_active
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    budget_periods {
+        bigserial id PK
+        text name
+        date starts_on
+        date ends_on
+        boolean is_active
+        timestamptz created_at
+    }
+    budget_allocations {
+        bigserial id PK
+        bigint teacher_id FK
+        bigint budget_period_id FK
+        bigint amount_paisa
+        bigint created_by FK
+        timestamptz created_at
+    }
+    budget_ledger {
+        bigserial id PK
+        bigint teacher_id FK
+        bigint budget_period_id FK
+        text entry_type
+        bigint amount_paisa "signed"
+        bigint order_id FK "nullable"
+        text reason
+        bigint created_by FK
+        timestamptz created_at
+    }
+    orders {
+        bigserial id PK
+        bigint teacher_id FK
+        bigint food_location_id FK
+        date order_date
+        text status
+        bigint total_paisa
+        text idempotency_key
+        timestamptz confirmed_at
+        timestamptz cancelled_at
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    order_items {
+        bigserial id PK
+        bigint order_id FK
+        bigint menu_item_id FK "nullable"
+        text item_name_snapshot
+        bigint unit_price_paisa_snapshot
+        integer quantity
+        bigint line_total_paisa
+        text status
+        timestamptz created_at
+    }
+    order_status_events {
+        bigserial id PK
+        bigint order_id FK
+        bigint order_item_id FK "nullable"
+        text old_status
+        text new_status
+        bigint changed_by FK
+        text note
+        timestamptz created_at
+    }
 ```
 
 ## Tables
@@ -42,24 +138,25 @@ erDiagram
 
 Every teacher, staff member, and administrator.
 
-| Column                      | Type          | Notes                                                                    |
-| --------------------------- | ------------- | ------------------------------------------------------------------------ |
-| `id`                        | `bigserial`   | Primary key                                                              |
-| `full_name`                 | `text`        | Required                                                                 |
-| `email`                     | `text`        | Required, **unique**, stored lower-cased                                 |
-| `password_hash`             | `text`        | bcrypt hash. Plaintext is never stored or logged                         |
-| `role`                      | `text`        | `TEACHER`, `STAFF`, or `ADMIN`, enforced by a `CHECK` constraint         |
-| `permissions`               | `jsonb`       | Array of granted permission strings. Always `[]` for `TEACHER`           |
-| `is_active`                 | `boolean`     | A deactivated user cannot log in and their tokens stop working           |
-| `token_version`             | `integer`     | Embedded in every JWT. Incrementing it revokes all of that user's tokens |
-| `created_at` / `updated_at` | `timestamptz` |                                                                          |
+| Column                      | Type          | Notes                                                                           |
+| --------------------------- | ------------- | ------------------------------------------------------------------------------- |
+| `id`                        | `bigserial`   | Primary key                                                                     |
+| `full_name`                 | `text`        | Required                                                                        |
+| `email`                     | `text`        | Required, **unique**, stored lower-cased                                        |
+| `password_hash`             | `text`        | bcrypt hash, always with the `$2b$` prefix. Plaintext is never stored or logged |
+| `role`                      | `text`        | `TEACHER`, `STAFF`, or `ADMIN`, enforced by a `CHECK` constraint                |
+| `designation`               | `text`        | Academic or staff designation (e.g. Professor, Lecturer). Nullable              |
+| `permissions`               | `jsonb`       | Array of granted permission strings. Always `[]` for `TEACHER`                  |
+| `is_active`                 | `boolean`     | A deactivated user cannot log in and their tokens stop working                  |
+| `token_version`             | `integer`     | Embedded in every JWT. Incrementing it revokes all of that user's tokens        |
+| `created_at` / `updated_at` | `timestamptz` |                                                                                 |
 
-Indexes: unique on `email`, index on `role`.
+Indexes: unique on `email`, index on `role` for staff listings.
 
 ### `sessions`
 
-Login audit trail and refresh-token storage. The JWT is the primary
-authentication mechanism; this table records logins and supports revocation.
+Login audit trail and refresh-token storage. The primary authentication
+mechanism is the JWT; this table records logins and supports revocation.
 
 | Column          | Type          | Notes                                                   |
 | --------------- | ------------- | ------------------------------------------------------- |
@@ -74,7 +171,7 @@ authentication mechanism; this table records logins and supports revocation.
 
 ### `food_locations`
 
-Participating vendors.
+Participating vendors. The CRUD demonstration entity for this project.
 
 | Column                      | Type          | Notes                                 |
 | --------------------------- | ------------- | ------------------------------------- |
@@ -129,9 +226,9 @@ The intended amount for a teacher in a period.
 | `created_by`       | `bigint`      | Foreign key to `users`, the allocating staff member |
 | `created_at`       | `timestamptz` |                                                     |
 
-**Unique constraint** on `(teacher_id, budget_period_id)`. This enforces policy
-P4: a duplicate allocation is rejected, and changing an amount requires an
-explicit adjustment with a reason.
+**Unique constraint** on `(teacher_id, budget_period_id)`. This is what enforces
+policy P4: a duplicate allocation is rejected, and changing an amount requires
+an explicit adjustment with a reason.
 
 ### `budget_ledger`
 
@@ -150,8 +247,8 @@ source of truth for balances.**
 | `created_by`       | `bigint`      | Foreign key to `users`                           |
 | `created_at`       | `timestamptz` |                                                  |
 
-**Sign convention.** Credits are positive, debits negative. Available balance for
-a teacher in a period is:
+**Sign convention.** Credits are positive, debits are negative. Available
+balance for a teacher in a period is:
 
 ```sql
 SELECT COALESCE(SUM(amount_paisa), 0)
@@ -179,8 +276,8 @@ append-only and rows are never updated or deleted.
 | `created_at` / `updated_at` | `timestamptz` |                                                    |
 
 **Unique constraint** on `(teacher_id, idempotency_key)` where the key is not
-null. This prevents a double-click or a network retry from creating two orders
-and two debits. The client generates the key once per checkout attempt.
+null. This is what prevents a double-click or a network retry from creating two
+orders and two debits. The client generates the key once per checkout attempt.
 
 Indexes: `(order_date, status)` for the staff daily view, `(teacher_id,
 order_date)` for teacher history.
@@ -201,7 +298,7 @@ order_date)` for teacher history.
 | `created_at`                | `timestamptz` |                                                                |
 
 The two snapshot columns satisfy policy P7. A later menu price change must not
-rewrite history, so nothing in the reporting path joins back to
+rewrite history, so nothing in the reporting path ever joins back to
 `menu_items.price_paisa` to recompute a historical total.
 
 ### `order_status_events`
@@ -246,28 +343,29 @@ Configuration that staff may change without a deployment.
 | `updated_at`  | `timestamptz` |                                 |
 
 Seeded keys: `order_cutoff_time` (default `12:00`), `budget_rollover` (default
-`false`), `timezone` (default `Asia/Dhaka`), `ordering_disabled_dates`. When
-rollover is enabled, creating a period credits each active teacher's positive
-remaining balance from the immediately preceding period as a signed `adjustment`
-ledger entry in the new period. Period creation and rollover credits commit or
-roll back together.
+`false`), `timezone` (default `Asia/Dhaka`), `ordering_disabled_dates`.
+When rollover is enabled, creating a period credits each active teacher's
+positive remaining balance from the immediately preceding period as a signed
+`adjustment` ledger entry in the new period. Period creation and rollover credits
+commit or roll back together.
 
 ## What the database enforces, and what it cannot
 
 Most rules live in the schema as constraints, triggers, or unique indexes, so a
-service, a script, or a future endpoint cannot quietly bypass them: the
-append-only ledger, non-overlapping budget periods, one allocation per teacher
-per period, case-insensitive unique email, idempotent orders, positive prices
-and quantities, `line_total_paisa` equal to unit price times quantity, and
-`cancelled_at` present exactly when an order is cancelled.
+service, a script, or a future endpoint cannot quietly bypass them: the append-only
+ledger, non-overlapping budget periods, one allocation per teacher per period,
+case-insensitive unique email, idempotent orders, positive prices and quantities,
+`line_total_paisa` equal to unit price times quantity, and `cancelled_at` present
+exactly when an order is cancelled.
 
-Two rules are **not** enforceable this way:
+Two rules are **not** enforceable this way and are stated here so nobody assumes
+otherwise:
 
 - **`orders.total_paisa` equals the sum of its line items.** A `CHECK`
   constraint cannot span rows. The order service computes both inside one
   transaction, and the seed test asserts the invariant across all seeded data.
-- **One food location per order.** Only the service layer can see every line
-  item at once, so it validates this before writing.
+- **One food location per order.** Only the service layer can see every line item
+  at once, so it validates this before writing.
 
 ## Truncating and `app_settings`
 
@@ -286,8 +384,6 @@ and it is imported by both the application pool and the test pool, because the
 parser is process-wide. Paisa amounts are many orders of magnitude below
 `Number.MAX_SAFE_INTEGER`, so this is exact.
 
-## Transaction boundaries
-
 Two operations must be atomic. If either half fails, both roll back, so an order
 can never exist without its ledger debit, and a debit can never exist without its
 order.
@@ -296,8 +392,8 @@ order.
 
 1. Begin transaction.
 2. `SELECT ... FROM users WHERE id = $1 FOR UPDATE` — lock the teacher row. This
-   serialises concurrent orders by the same teacher, so two simultaneous
-   requests cannot both read the same balance and both succeed.
+   serialises concurrent orders by the same teacher so two simultaneous requests
+   cannot both read the same balance and both succeed.
 3. Check ordering is open for the date and the cutoff has not passed.
 4. Load the requested menu items and verify availability, active state, and
    quantity bounds.
@@ -314,7 +410,7 @@ matching positive ledger refund, and appends a status event.
 There is no ORM, so `db/migrate.ts` implements migrations directly.
 
 - Migrations are numbered SQL files in `db/migrations/`, applied in filename
-  order.
+  order. `0001_initial_schema.sql`, `0002_...`, and so on.
 - Each file runs inside a transaction and is recorded in `schema_migrations`
   with a checksum.
 - A **PostgreSQL advisory lock** is held for the duration of the run, so two
@@ -330,8 +426,9 @@ migration instead.
 
 ## Seed data
 
-`db/seed.ts` loads fictional demonstration data and is safe to run repeatedly:
+`db/seed.sql` loads fictional demonstration data and is safe to run repeatedly:
 it truncates the demo tables first, so the seed always produces the same result.
+
 It creates two locations, a representative menu with realistic-looking paisa
 prices, three budget periods, fictional teacher and staff accounts, and a few
 past orders with matching ledger entries so the reports have something to show.

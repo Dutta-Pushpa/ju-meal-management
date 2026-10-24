@@ -21,6 +21,9 @@ const config: AppConfig = {
   JWT_EXPIRES_IN_MINUTES: 15,
   BCRYPT_COST: 10,
   APP_TIMEZONE: 'Asia/Dhaka',
+  ORDER_CUTOFF_TIME: '12:00',
+  BUDGET_ROLLOVER: false,
+  DEFAULT_WEEKLY_BUDGET_PAISA: 70_000,
   CORS_ORIGIN: ['http://localhost:5173'],
   TRUST_PROXY: false,
   RATE_LIMIT_WINDOW_MINUTES: 15,
@@ -94,14 +97,14 @@ beforeAll(async () => {
   db = getPool();
   await truncateAll();
   app = createApp({ config, logger: silentLogger, db });
-  await seedUser('admin@example.edu', 'ADMIN');
-  await seedUser('allocator@example.edu', 'STAFF', ['budgets:allocate']);
-  await seedUser('adjuster@example.edu', 'STAFF', ['budgets:adjust']);
-  teacherId = await seedUser('teacher@example.edu', 'TEACHER');
-  adminToken = await login('admin@example.edu');
-  allocatorToken = await login('allocator@example.edu');
-  adjusterToken = await login('adjuster@example.edu');
-  teacherToken = await login('teacher@example.edu');
+  await seedUser('admin@juniv.edu', 'ADMIN');
+  await seedUser('allocator@juniv.edu', 'STAFF', ['budgets:allocate']);
+  await seedUser('adjuster@juniv.edu', 'STAFF', ['budgets:adjust']);
+  teacherId = await seedUser('teacher@juniv.edu', 'TEACHER');
+  adminToken = await login('admin@juniv.edu');
+  allocatorToken = await login('allocator@juniv.edu');
+  adjusterToken = await login('adjuster@juniv.edu');
+  teacherToken = await login('teacher@juniv.edu');
 });
 
 afterAll(async () => {
@@ -350,5 +353,30 @@ describe('budget allocations and adjustments', () => {
       .get(`/api/teacher/budget?period=${periodId}&teacherId=${teacherId}`)
       .set(auth(adminToken));
     expect(staffRead.status).toBe(200);
+  });
+});
+
+describe('GET /api/teacher/budget-periods', () => {
+  it('lists saved periods to authenticated users without exposing ledger data', async () => {
+    const created = await createPeriod(adminToken, 'List periods', '2095-01-01', '2095-01-07');
+    expect(created.status).toBe(201);
+
+    const response = await request(app).get('/api/teacher/budget-periods').set(auth(teacherToken));
+    expect(response.status).toBe(200);
+    expect(
+      response.body.data.some((period: { name: string }) => period.name === 'List periods'),
+    ).toBe(true);
+    expect(response.body.data[0]).toHaveProperty('startsOn');
+    expect(response.body.data[0]).not.toHaveProperty('amountPaisa');
+  });
+});
+
+describe('GET /api/staff/teachers budget permissions', () => {
+  it('allows staff who can adjust budgets to load teacher choices', async () => {
+    const response = await request(app).get('/api/staff/teachers').set(auth(adjusterToken));
+    expect(response.status).toBe(200);
+    expect(response.body.data.some((teacher: { id: number }) => teacher.id === teacherId)).toBe(
+      true,
+    );
   });
 });

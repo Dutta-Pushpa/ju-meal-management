@@ -137,3 +137,19 @@ export async function deactivateMenuItem(
   );
   return rows[0];
 }
+
+export interface ManagedMenuItemRow extends MenuItemRow {
+  location_name: string;
+}
+
+/** All menu rows for staff administration, including unavailable/inactive items. */
+export async function listManagedMenuItems(db: Queryable): Promise<ManagedMenuItemRow[]> {
+  const { rows } = await db.query<ManagedMenuItemRow>(
+    `SELECT m.id, m.food_location_id, l.name AS location_name, m.name, m.description,
+            m.category, m.price_paisa, m.is_available, m.is_active
+       FROM menu_items m
+       JOIN food_locations l ON l.id = m.food_location_id
+      ORDER BY l.name, m.category NULLS LAST, m.name, m.id`,
+  );
+  return rows;
+}

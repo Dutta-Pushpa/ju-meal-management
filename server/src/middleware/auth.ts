@@ -1,5 +1,5 @@
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
-import { type Permission, type Role } from '@ju/shared';
+import { PERMISSIONS, ROLES, type Permission, type Role } from '@ju/shared';
 import { forbidden, unauthorized } from '../utils/errors.js';
 import { tokenFromHeader } from '../utils/token.js';
 import { type AuthUser, resolveToken } from '../services/auth.service.js';
@@ -26,29 +26,6 @@ declare global {
 export interface AuthMiddlewareDeps {
   db: Queryable;
   jwtSecret: string;
-}
-
-/**
- * Whether the actor holds a permission.
- *
- * ADMIN bypasses every check by design: an administrator is expected to be able
- * to reach anything. The permission list on the other roles is what enforces
- * least privilege.
- */
-export function hasPermission(user: AuthUser, permission: Permission): boolean {
-  return user.role === 'ADMIN' || user.permissions.includes(permission);
-}
-
-/**
- * Throw FORBIDDEN unless the actor holds the permission.
- *
- * Used by handlers that decide on a permission at runtime, where the required
- * permission depends on the request rather than on the route.
- */
-export function assertPermission(user: AuthUser, permission: Permission): void {
-  if (!hasPermission(user, permission)) {
-    throw forbidden('You do not have permission to perform this action.');
-  }
 }
 
 /**
@@ -104,7 +81,7 @@ export function requireRole(...allowed: Role[]): RequestHandler {
 }
 
 /**
- * Require one or more permissions.
+ * Require a specific permission.
  *
  * Permission is checked before role, because the finer-grained check is the
  * one that actually expresses least privilege. A staff account can hold
@@ -119,11 +96,6 @@ export function requirePermission(...required: Permission[]): RequestHandler {
 
     if (!user) {
       next(unauthorized('An access token is required.'));
-      return;
-    }
-
-    if (user.role === 'ADMIN') {
-      next();
       return;
     }
 
@@ -167,7 +139,7 @@ export function requireRoleWithPermission(roles: Role[], permission: Permission)
       return;
     }
 
-    if (!hasPermission(user, permission)) {
+    if (!user.permissions.includes(permission)) {
       next(forbidden('You do not have permission to perform this action.'));
       return;
     }
@@ -184,3 +156,7 @@ export function currentUser(req: Request): AuthUser {
 
   return req.auth;
 }
+
+// Re-exported so tests and controllers can assert against the same lists the
+// middleware enforces, rather than duplicating them.
+export { ROLES, PERMISSIONS };

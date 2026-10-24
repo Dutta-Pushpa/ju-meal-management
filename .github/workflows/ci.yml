@@ -108,9 +108,8 @@ jobs:
           if-no-files-found: ignore
 
   # ---------------------------------------------------------------------------
-  # Phase 7 — Postman collections through Newman. Skips until the collections
-  # are committed; it then boots the API against a seeded database and runs
-  # every phase, reporting each one separately.
+  # Phase 7 — Postman collection through Newman. Skips until the collection is
+  # committed; it then boots the API against a seeded database and runs it.
   # ---------------------------------------------------------------------------
   api-tests:
     name: API collection (Newman)
@@ -139,14 +138,6 @@ jobs:
       DATABASE_URL: postgresql://ju_meal:ju_meal_dev_password@localhost:5432/ju_meal
       # Throwaway value for this job only. Never reused anywhere real.
       JWT_SECRET: ci-collection-secret-that-is-longer-than-32-characters
-      # The collection is a test client, not a real user, and it makes far
-      # more requests in a minute than any human would. The default budget of
-      # 300 requests per 15 minutes is exhausted by a single run, which would
-      # fail the job with spurious 429s. The limit is raised here so the job
-      # tests the API contract rather than the rate limiter.
-      RATE_LIMIT_MAX_REQUESTS: '5000'
-      RATE_LIMIT_WINDOW_MINUTES: '1'
-      LOGIN_RATE_LIMIT_MAX_ATTEMPTS: '50'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -170,12 +161,12 @@ jobs:
           echo "API did not become healthy within 30s"
           cat server.log
           exit 1
-      - name: Run the phase collections
+      - name: Run the collection
         run: npm run test:api
       - name: Server log on failure
         if: failure()
         run: cat server.log
-      - name: Upload the Newman reports
+      - name: Upload the Newman report
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -184,7 +175,7 @@ jobs:
           if-no-files-found: ignore
 
   # ---------------------------------------------------------------------------
-  # Phase 10 — frontend. Skips until the client becomes a real Vite app.
+  # Phase 10 — build the React + Vite frontend on pushes and pull requests.
   # ---------------------------------------------------------------------------
   frontend:
     name: Frontend build

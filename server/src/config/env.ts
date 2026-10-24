@@ -1,14 +1,14 @@
 import {
-  ConfigError,
   IssueCollector,
+  ValidationError,
   readBoolean,
   readEnum,
   readInt,
   readList,
   readOptionalString,
+  readPattern,
   readString,
-} from './env-readers.js';
-import { isValidTimeZone } from '../utils/time.js';
+} from '../utils/validation.js';
 
 /**
  * Configuration is validated once, at startup, from a single source of truth.
@@ -28,6 +28,7 @@ export type NodeEnv = (typeof NODE_ENVS)[number];
 export type LogLevel = (typeof LOG_LEVELS)[number];
 
 const EXAMPLE_SECRET = 'replace-this-with-a-long-random-string-at-least-32-chars';
+const HH_MM = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
 export interface AppConfig {
   NODE_ENV: NodeEnv;
@@ -46,6 +47,9 @@ export interface AppConfig {
   BCRYPT_COST: number;
 
   APP_TIMEZONE: string;
+  ORDER_CUTOFF_TIME: string;
+  BUDGET_ROLLOVER: boolean;
+  DEFAULT_WEEKLY_BUDGET_PAISA: number;
 
   CORS_ORIGIN: string[];
   TRUST_PROXY: boolean;
@@ -60,6 +64,15 @@ export interface AppConfig {
 
 export type LoadConfigResult = { ok: true; config: AppConfig } | { ok: false; issues: string[] };
 
+function isValidTimeZone(tz: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Read one value, recording any problem instead of throwing.
  *
@@ -72,8 +85,10 @@ function collect<T>(issues: IssueCollector, read: () => T): T | undefined {
   try {
     return read();
   } catch (error) {
-    if (error instanceof ConfigError) {
-      issues.add(error.issue.field, error.issue.issue, error.issue.message);
+    if (error instanceof ValidationError) {
+      for (const issue of error.issues) {
+        issues.add(issue.field, issue.issue, issue.message);
+      }
       return undefined;
     }
     throw error;
@@ -119,6 +134,19 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): LoadConfigR
 
   const APP_TIMEZONE = collect(issues, () =>
     readString(source, 'APP_TIMEZONE', { default: 'Asia/Dhaka' }),
+  );
+  const ORDER_CUTOFF_TIME = collect(issues, () =>
+    readPattern(
+      source,
+      'ORDER_CUTOFF_TIME',
+      HH_MM,
+      'ORDER_CUTOFF_TIME must be HH:mm in 24-hour time',
+      '12:00',
+    ),
+  );
+  const BUDGET_ROLLOVER = collect(issues, () => readBoolean(source, 'BUDGET_ROLLOVER', false));
+  const DEFAULT_WEEKLY_BUDGET_PAISA = collect(issues, () =>
+    readInt(source, 'DEFAULT_WEEKLY_BUDGET_PAISA', { min: 0, default: 70_000 }),
   );
 
   const CORS_ORIGIN = collect(issues, () =>
@@ -190,6 +218,9 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): LoadConfigR
       JWT_EXPIRES_IN_MINUTES: JWT_EXPIRES_IN_MINUTES!,
       BCRYPT_COST: BCRYPT_COST!,
       APP_TIMEZONE: APP_TIMEZONE!,
+      ORDER_CUTOFF_TIME: ORDER_CUTOFF_TIME!,
+      BUDGET_ROLLOVER: BUDGET_ROLLOVER!,
+      DEFAULT_WEEKLY_BUDGET_PAISA: DEFAULT_WEEKLY_BUDGET_PAISA!,
       CORS_ORIGIN: CORS_ORIGIN!,
       TRUST_PROXY: TRUST_PROXY!,
       RATE_LIMIT_WINDOW_MINUTES: RATE_LIMIT_WINDOW_MINUTES!,
@@ -199,4 +230,17 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): LoadConfigR
       LOG_PRETTY: LOG_PRETTY!,
     },
   };
+}
+
+/** Throwing variant, used by the entry point. */
+export function loadConfigOrThrow(source?: NodeJS.ProcessEnv): AppConfig {
+  const result = loadConfig(source);
+
+  if (!result.ok) {
+    throw new Error(
+      `Invalid configuration:\n${result.issues.map((issue) => `  - ${issue}`).join('\n')}`,
+    );
+  }
+
+  return result.config;
 }

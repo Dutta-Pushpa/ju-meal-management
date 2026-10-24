@@ -10,7 +10,7 @@ import { closePool, getPool, query, queryOne, truncateAll } from '../helpers/dat
 /**
  * Food-location CRUD, end to end over HTTP.
  *
- * These cases pin the rules from docs/development.md and docs/policies.md: reading is
+ * These cases pin the rules from docs/api.md and docs/policies.md: reading is
  * open to any signed-in user, writing needs ADMIN or the `locations:manage`
  * permission, deletion is a soft deactivation, and a location with live orders in
  * the current period cannot be deactivated.
@@ -33,6 +33,9 @@ const config: AppConfig = {
   JWT_EXPIRES_IN_MINUTES: 15,
   BCRYPT_COST: TEST_BCRYPT_COST,
   APP_TIMEZONE: TZ,
+  ORDER_CUTOFF_TIME: '12:00',
+  BUDGET_ROLLOVER: false,
+  DEFAULT_WEEKLY_BUDGET_PAISA: 70_000,
   CORS_ORIGIN: ['http://localhost:5173'],
   TRUST_PROXY: false,
   RATE_LIMIT_WINDOW_MINUTES: 15,
@@ -146,23 +149,23 @@ beforeAll(async () => {
   await truncateAll();
   app = createApp({ config, logger: silentLogger, db });
 
-  await seedUser({ email: 'admin@example.edu', role: 'ADMIN' });
+  await seedUser({ email: 'admin@juniv.edu', role: 'ADMIN' });
   await seedUser({
-    email: 'manager@example.edu',
+    email: 'manager@juniv.edu',
     role: 'STAFF',
     permissions: ['locations:manage'],
   });
   await seedUser({
-    email: 'collector@example.edu',
+    email: 'collector@juniv.edu',
     role: 'STAFF',
     permissions: ['orders:manage_status'],
   });
-  teacherId = await seedUser({ email: 'teacher@example.edu', role: 'TEACHER' });
+  teacherId = await seedUser({ email: 'teacher@juniv.edu', role: 'TEACHER' });
 
-  adminToken = await loginToken('admin@example.edu');
-  managerToken = await loginToken('manager@example.edu');
-  collectorToken = await loginToken('collector@example.edu');
-  teacherToken = await loginToken('teacher@example.edu');
+  adminToken = await loginToken('admin@juniv.edu');
+  managerToken = await loginToken('manager@juniv.edu');
+  collectorToken = await loginToken('collector@juniv.edu');
+  teacherToken = await loginToken('teacher@juniv.edu');
 
   // One current period, shared by every test. A second overlapping period would
   // violate the no-overlap constraint, so it is created exactly once here.
@@ -576,5 +579,28 @@ describe('DELETE /api/locations/:id', () => {
     );
 
     expect(audit?.action).toBe('location.deactivated');
+  });
+});
+
+describe('GET /api/locations/manage/all', () => {
+  it('requires location-management access and includes deactivated locations for managers', async () => {
+    const activeName = uniqueName('Managed active');
+    const inactiveName = uniqueName('Managed inactive');
+    await seedLocation({ name: activeName });
+    await seedLocation({ name: inactiveName, isActive: false });
+
+    const denied = await request(app)
+      .get('/api/locations/manage/all')
+      .set(authHeader(teacherToken));
+    expect(denied.status).toBe(403);
+
+    const response = await request(app)
+      .get('/api/locations/manage/all')
+      .set(authHeader(managerToken));
+    expect(response.status).toBe(200);
+    expect(response.body.meta.total).toBe(response.body.data.length);
+    expect(response.body.data.map((location: { name: string }) => location.name)).toContain(
+      inactiveName,
+    );
   });
 });

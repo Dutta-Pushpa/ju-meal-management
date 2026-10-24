@@ -21,6 +21,9 @@ const config: AppConfig = {
   JWT_EXPIRES_IN_MINUTES: 15,
   BCRYPT_COST: 10,
   APP_TIMEZONE: 'Asia/Dhaka',
+  ORDER_CUTOFF_TIME: '12:00',
+  BUDGET_ROLLOVER: false,
+  DEFAULT_WEEKLY_BUDGET_PAISA: 70_000,
   CORS_ORIGIN: ['http://localhost:5173'],
   TRUST_PROXY: false,
   RATE_LIMIT_WINDOW_MINUTES: 15,
@@ -86,14 +89,14 @@ beforeAll(async () => {
   db = getPool();
   await truncateAll();
   app = createApp({ config, logger: silentLogger, db });
-  await seedUser('admin@example.edu', 'ADMIN');
-  await seedUser('manager@example.edu', 'STAFF', ['menu_items:manage']);
-  await seedUser('restricted@example.edu', 'STAFF');
-  teacherId = await seedUser('teacher@example.edu', 'TEACHER');
-  adminToken = await login('admin@example.edu');
-  managerToken = await login('manager@example.edu');
-  noPermissionToken = await login('restricted@example.edu');
-  teacherToken = await login('teacher@example.edu');
+  await seedUser('admin@juniv.edu', 'ADMIN');
+  await seedUser('manager@juniv.edu', 'STAFF', ['menu_items:manage']);
+  await seedUser('restricted@juniv.edu', 'STAFF');
+  teacherId = await seedUser('teacher@juniv.edu', 'TEACHER');
+  adminToken = await login('admin@juniv.edu');
+  managerToken = await login('manager@juniv.edu');
+  noPermissionToken = await login('restricted@juniv.edu');
+  teacherToken = await login('teacher@juniv.edu');
   const locations = await query<{ id: number }>(
     `INSERT INTO food_locations (name) VALUES ($1) RETURNING id`,
     [unique('Vendor')],
@@ -255,5 +258,52 @@ describe('menu item administration', () => {
     expect(second.status).toBe(200);
     expect(second.body.data.isActive).toBe(false);
     expect(await query('SELECT id FROM menu_items WHERE id = $1', [id])).toHaveLength(1);
+  });
+});
+
+describe('GET /api/staff/menu-items', () => {
+  it('returns the full admin catalogue only to menu managers', async () => {
+    const active = unique('Managed active item');
+    const inactive = unique('Managed inactive item');
+    await query(
+      `INSERT INTO menu_items (food_location_id, name, price_paisa, is_available, is_active)
+       VALUES ($1, $2, 2500, true, true), ($1, $3, 3500, false, false)`,
+      [locationId, active, inactive],
+    );
+
+    const denied = await request(app).get('/api/staff/menu-items').set(auth(teacherToken));
+    expect(denied.status).toBe(403);
+
+    const response = await request(app).get('/api/staff/menu-items').set(auth(managerToken));
+    expect(response.status).toBe(200);
+    expect(response.body.meta.total).toBe(response.body.data.length);
+    expect(response.body.data.map((item: { name: string }) => item.name)).toContain(inactive);
+    expect(response.body.data.find((item: { name: string }) => item.name === active)).toMatchObject(
+      {
+        location: { id: locationId },
+        price: { amountPaisa: 2500 },
+      },
+    );
+  });
+});
+
+describe('GET /api/staff/users and /api/staff/teachers', () => {
+  it('returns safe directory data to admins and restricts teacher listings by permission', async () => {
+    const usersResponse = await request(app).get('/api/staff/users').set(auth(adminToken));
+    expect(usersResponse.status).toBe(200);
+    expect(
+      usersResponse.body.data.some((user: { email: string }) => user.email === 'teacher@juniv.edu'),
+    ).toBe(true);
+    expect(JSON.stringify(usersResponse.body)).not.toContain('password_hash');
+
+    const denied = await request(app).get('/api/staff/users').set(auth(teacherToken));
+    expect(denied.status).toBe(403);
+    const teachers = await request(app).get('/api/staff/teachers').set(auth(adminToken));
+    expect(teachers.status).toBe(200);
+    expect(
+      teachers.body.data.some(
+        (teacher: { email: string }) => teacher.email === 'teacher@juniv.edu',
+      ),
+    ).toBe(true);
   });
 });

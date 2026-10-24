@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import type { Request, Response } from 'express';
-import { PERMISSIONS, ROLES } from '@ju/shared';
 import {
   currentUser,
   requirePermission,
@@ -28,7 +27,7 @@ function stubRes(): Response {
 const teacher: AuthUser = {
   id: 1,
   fullName: 'A. Teacher',
-  email: 'teacher@example.edu',
+  email: 'teacher@juniv.edu',
   role: 'TEACHER',
   permissions: [],
 };
@@ -36,7 +35,7 @@ const teacher: AuthUser = {
 const collector: AuthUser = {
   id: 2,
   fullName: 'Demo Staff',
-  email: 'staff@example.edu',
+  email: 'staff@juniv.edu',
   role: 'STAFF',
   permissions: ['orders:manage_status'],
 };
@@ -44,7 +43,7 @@ const collector: AuthUser = {
 const admin: AuthUser = {
   id: 3,
   fullName: 'Admin',
-  email: 'admin@example.edu',
+  email: 'admin@juniv.edu',
   role: 'ADMIN',
   permissions: [],
 };
@@ -159,7 +158,8 @@ describe('currentUser', () => {
     }
   });
 
-  it('exposes the shared role and permission lists', () => {
+  it('exposes ROLES and PERMISSIONS for controllers to share', async () => {
+    const { ROLES, PERMISSIONS } = await import('../../src/middleware/auth.js');
     expect(ROLES).toContain('TEACHER');
     expect(PERMISSIONS).toContain('orders:manage_status');
   });

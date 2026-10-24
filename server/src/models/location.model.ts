@@ -39,6 +39,7 @@ export interface UpdateLocationInput {
   description?: string | null;
   isActive?: boolean;
 }
+
 /** Active locations for the browse view, alphabetically. */
 export async function listActiveLocations(db: Queryable): Promise<LocationRow[]> {
   const { rows } = await db.query<LocationRow>(
@@ -169,4 +170,12 @@ export async function countBlockingOrdersInCurrentPeriod(
   );
 
   return rows[0]?.count ?? 0;
+}
+
+/** All locations for the management interface, including soft-deactivated rows. */
+export async function listAllLocations(db: Queryable): Promise<LocationRow[]> {
+  const { rows } = await db.query<LocationRow>(
+    `SELECT ${LOCATION_COLUMNS} FROM food_locations ORDER BY is_active DESC, name`,
+  );
+  return rows;
 }

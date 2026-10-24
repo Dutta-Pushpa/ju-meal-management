@@ -1,10 +1,7 @@
 import { Client, Pool } from 'pg';
-// The int8 and date parsers are process-wide; importing them here makes the
-// test pool return money as numbers and dates as YYYY-MM-DD strings, exactly as
-// the application pool does.
+// The int8 parser is process-wide; importing it here makes the test pool return
+// money as numbers, exactly as the application pool does.
 import '../../src/db/int8.js';
-import '../../src/db/date.js';
-import { ADMIN_DATABASE } from './test-database-url.js';
 
 /**
  * Test database access.
@@ -17,6 +14,8 @@ import { ADMIN_DATABASE } from './test-database-url.js';
  * a development or production database would truncate real data, so a run that
  * is not clearly a test database fails immediately rather than proceeding.
  */
+
+export const ADMIN_DATABASE = 'postgres';
 
 function databaseNameFrom(url: string): string {
   try {

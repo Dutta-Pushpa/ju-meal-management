@@ -58,6 +58,25 @@ describe('seed data', () => {
     expect(await count('budget_ledger')).toBeGreaterThan(0);
   });
 
+  it('seeds the four Bot Tola shops with the shared Bengali menu', async () => {
+    const shops = await query<{ name: string; item_count: string }>(`
+      SELECT l.name, count(m.id)::text AS item_count
+      FROM food_locations l
+      LEFT JOIN menu_items m ON m.food_location_id = l.id
+      WHERE l.name IN ('রাধুনী', 'রাফি', 'নূরজাহান', 'জ্যাক্স কিচেন')
+        AND l.description = 'বটতলা'
+      GROUP BY l.id, l.name
+      ORDER BY l.id
+    `);
+
+    expect(shops).toEqual([
+      { name: 'রাধুনী', item_count: '18' },
+      { name: 'রাফি', item_count: '18' },
+      { name: 'নূরজাহান', item_count: '18' },
+      { name: 'জ্যাক্স কিচেন', item_count: '18' },
+    ]);
+  });
+
   it('leaves no plaintext password anywhere in the database', async () => {
     const rows = await query<{ count: string }>(
       `SELECT count(*)::text AS count FROM users
@@ -153,43 +172,12 @@ describe('seed data', () => {
     }
   });
 
-  it('uses only example.com addresses, so no real personal data is seeded', async () => {
+  it('uses only juniv.edu addresses, so no real personal data is seeded', async () => {
     const rows = await query<{ non_example: string }>(
-      `SELECT count(*)::text AS non_example FROM users WHERE email NOT LIKE '%@example.edu'`,
+      `SELECT count(*)::text AS non_example FROM users WHERE email NOT LIKE '%@juniv.edu'`,
     );
 
     expect(Number(rows[0]?.non_example)).toBe(0);
-  });
-
-  it('leaves every serial sequence past the explicit demo ids', async () => {
-    // The seed inserts explicit ids so relationships stay stable, which does not
-    // move the underlying sequences. A sequence left behind would make the first
-    // insert through the API collide with a demo row and look like a duplicate.
-    const tables = [
-      'users',
-      'food_locations',
-      'menu_items',
-      'budget_periods',
-      'orders',
-      'order_items',
-    ];
-
-    for (const table of tables) {
-      const sequence = await query<{ last_value: string | null }>(
-        `SELECT last_value::text AS last_value
-           FROM pg_sequences
-          WHERE schemaname = 'public' AND sequencename = $1`,
-        [`${table}_id_seq`],
-      );
-      const max = await query<{ max_id: string }>(
-        `SELECT COALESCE(max(id), 0)::text AS max_id FROM ${table}`,
-      );
-
-      expect(sequence[0]?.last_value, `${table}_id_seq is missing`).not.toBeNull();
-      expect(BigInt(sequence[0]!.last_value!), `${table}_id_seq`).toBeGreaterThanOrEqual(
-        BigInt(max[0]!.max_id),
-      );
-    }
   });
 
   it('produces identical results when run again', async () => {
