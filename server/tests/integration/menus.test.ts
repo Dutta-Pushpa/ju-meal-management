@@ -278,10 +278,12 @@ describe('GET /api/staff/menu-items', () => {
     expect(response.status).toBe(200);
     expect(response.body.meta.total).toBe(response.body.data.length);
     expect(response.body.data.map((item: { name: string }) => item.name)).toContain(inactive);
-    expect(response.body.data.find((item: { name: string }) => item.name === active)).toMatchObject({
-      location: { id: locationId },
-      price: { amountPaisa: 2500 },
-    });
+    expect(response.body.data.find((item: { name: string }) => item.name === active)).toMatchObject(
+      {
+        location: { id: locationId },
+        price: { amountPaisa: 2500 },
+      },
+    );
   });
 });
 
@@ -289,13 +291,19 @@ describe('GET /api/staff/users and /api/staff/teachers', () => {
   it('returns safe directory data to admins and restricts teacher listings by permission', async () => {
     const usersResponse = await request(app).get('/api/staff/users').set(auth(adminToken));
     expect(usersResponse.status).toBe(200);
-    expect(usersResponse.body.data.some((user: { email: string }) => user.email === 'teacher@juniv.edu')).toBe(true);
+    expect(
+      usersResponse.body.data.some((user: { email: string }) => user.email === 'teacher@juniv.edu'),
+    ).toBe(true);
     expect(JSON.stringify(usersResponse.body)).not.toContain('password_hash');
 
     const denied = await request(app).get('/api/staff/users').set(auth(teacherToken));
     expect(denied.status).toBe(403);
     const teachers = await request(app).get('/api/staff/teachers').set(auth(adminToken));
     expect(teachers.status).toBe(200);
-    expect(teachers.body.data.some((teacher: { email: string }) => teacher.email === 'teacher@juniv.edu')).toBe(true);
+    expect(
+      teachers.body.data.some(
+        (teacher: { email: string }) => teacher.email === 'teacher@juniv.edu',
+      ),
+    ).toBe(true);
   });
 });

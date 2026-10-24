@@ -26,7 +26,7 @@ does not need editing.
 | Format, lint, type-check   | `format:check`, `lint`, `typecheck`                     | Always                                    |
 | Unit and integration tests | Tests against a PostgreSQL 16 service                   | Always — coverage uploaded as an artifact |
 | API collection (Newman)    | Boots the API, waits for `/health`, runs the collection | `postman/**/*.json` exists (Phase 7)      |
-| Frontend build             | `npm run build --workspace client`                      | `client/vite.config.ts` exists  |
+| Frontend build             | `npm run build --workspace client`                      | `client/vite.config.ts` exists            |
 
 The integration database is created by the service container (`ju_meal_test`)
 and migrated by the test suite itself. Tests never touch development or

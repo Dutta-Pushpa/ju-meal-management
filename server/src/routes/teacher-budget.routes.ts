@@ -1,6 +1,10 @@
 import { Router } from 'express';
 import type { Database } from '../db/pool.js';
-import { getBudget, getBudgetPeriods, getLedger } from '../controllers/teacher-budget.controller.js';
+import {
+  getBudget,
+  getBudgetPeriods,
+  getLedger,
+} from '../controllers/teacher-budget.controller.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 
 export function createTeacherBudgetRouter(deps: { db: Database; jwtSecret: string }): Router {

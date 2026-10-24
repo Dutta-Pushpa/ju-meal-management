@@ -65,7 +65,6 @@ function readQueryInt(
   return requireInt(Number(raw), key, { min, max });
 }
 
-
 /** GET /api/teacher/budget-periods — safe period choices for all authenticated roles. */
 export function getBudgetPeriods(db: Database) {
   return async (_req: Request, res: Response): Promise<void> => {

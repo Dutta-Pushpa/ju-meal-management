@@ -18,24 +18,24 @@ Keep the standard request/response format: successful API responses use `{ "data
 
 ## 2. Frontend file map
 
-| File | Responsibility |
-| --- | --- |
-| `client/src/main.tsx` | Vite/React entry point and stylesheet import |
-| `client/src/App.tsx` | Sign-in/teacher registration, in-memory session, role/permission navigation, API health indicator |
-| `client/src/api.ts` | Typed `fetch` wrapper, bearer token, response/error handling, Bangladeshi money/date helpers |
-| `client/src/types.ts` | TypeScript contracts for API entities and responses |
-| `client/src/ui.tsx` | Shared buttons, fields, cards, tables, alerts, loading and empty states |
-| `client/src/pages/TeacherPages.tsx` | Teacher overview, menu/cart/order submission, orders/cancellation and personal budget/ledger |
-| `client/src/pages/StaffPages.tsx` | Staff order queue, statuses, collection views and reporting |
-| `client/src/pages/AdminPages.tsx` | Managed locations, menus, users/permissions, budget periods/allocations/adjustments and policy settings |
-| `client/src/styles.css` | Responsive layout and component styling |
-| `client/vite.config.ts` | Local development server and `/api` + `/health` proxies |
-| `server/src/routes/` | API paths and access-control guards |
-| `server/src/controllers/` | Request parsing/validation and HTTP response selection |
-| `server/src/services/` | Business rules and transaction boundaries |
-| `server/src/models/` | SQL queries and persistence |
-| `server/tests/integration/` | API tests against PostgreSQL |
-| `db/migrations/` and `db/seeds/` | Schema changes and fictional local demo records |
+| File                                | Responsibility                                                                                          |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `client/src/main.tsx`               | Vite/React entry point and stylesheet import                                                            |
+| `client/src/App.tsx`                | Sign-in/teacher registration, in-memory session, role/permission navigation, API health indicator       |
+| `client/src/api.ts`                 | Typed `fetch` wrapper, bearer token, response/error handling, Bangladeshi money/date helpers            |
+| `client/src/types.ts`               | TypeScript contracts for API entities and responses                                                     |
+| `client/src/ui.tsx`                 | Shared buttons, fields, cards, tables, alerts, loading and empty states                                 |
+| `client/src/pages/TeacherPages.tsx` | Teacher overview, menu/cart/order submission, orders/cancellation and personal budget/ledger            |
+| `client/src/pages/StaffPages.tsx`   | Staff order queue, statuses, collection views and reporting                                             |
+| `client/src/pages/AdminPages.tsx`   | Managed locations, menus, users/permissions, budget periods/allocations/adjustments and policy settings |
+| `client/src/styles.css`             | Responsive layout and component styling                                                                 |
+| `client/vite.config.ts`             | Local development server and `/api` + `/health` proxies                                                 |
+| `server/src/routes/`                | API paths and access-control guards                                                                     |
+| `server/src/controllers/`           | Request parsing/validation and HTTP response selection                                                  |
+| `server/src/services/`              | Business rules and transaction boundaries                                                               |
+| `server/src/models/`                | SQL queries and persistence                                                                             |
+| `server/tests/integration/`         | API tests against PostgreSQL                                                                            |
+| `db/migrations/` and `db/seeds/`    | Schema changes and fictional local demo records                                                         |
 
 ## 3. Run it locally
 

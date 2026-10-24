@@ -32,17 +32,12 @@ export interface UpdateLocationInput {
   isActive?: boolean;
 }
 
-export async function listLocations(
-  deps: LocationDeps,
-): Promise<LocationRow[]> {
+export async function listLocations(deps: LocationDeps): Promise<LocationRow[]> {
   return locations.listActiveLocations(deps.db);
 }
 
 /** A single active location. An inactive one is reported as not found. */
-export async function getLocation(
-  deps: LocationDeps,
-  id: number,
-): Promise<LocationRow> {
+export async function getLocation(deps: LocationDeps, id: number): Promise<LocationRow> {
   const row = await locations.findActiveLocationById(deps.db, id);
 
   if (!row) {
@@ -65,10 +60,7 @@ export async function createLocation(
     // Translate only the location-name constraint.
     // Primary-key collisions must not be reported as duplicate names.
     if (isUniqueViolation(error, 'food_locations_name_unique')) {
-      throw conflict(
-        'LOCATION_ALREADY_EXISTS',
-        'A location with that name already exists.',
-      );
+      throw conflict('LOCATION_ALREADY_EXISTS', 'A location with that name already exists.');
     }
 
     throw error;
@@ -111,10 +103,7 @@ export async function updateLocation(
     updated = await locations.updateLocation(deps.db, id, patch);
   } catch (error) {
     if (isUniqueViolation(error, 'food_locations_name_unique')) {
-      throw conflict(
-        'LOCATION_ALREADY_EXISTS',
-        'A location with that name already exists.',
-      );
+      throw conflict('LOCATION_ALREADY_EXISTS', 'A location with that name already exists.');
     }
 
     throw error;
@@ -157,11 +146,7 @@ export async function deactivateLocation(
 
   await assertNoBlockingOrders(deps, existing);
 
-  const updated = await locations.updateLocation(
-    deps.db,
-    id,
-    { isActive: false },
-  );
+  const updated = await locations.updateLocation(deps.db, id, { isActive: false });
 
   if (!updated) {
     throw notFound('No location with that id.');
@@ -181,10 +166,7 @@ export async function deactivateLocation(
 /**
  * Refuse deactivation when non-cancelled orders exist in the current period.
  */
-async function assertNoBlockingOrders(
-  deps: LocationDeps,
-  location: LocationRow,
-): Promise<void> {
+async function assertNoBlockingOrders(deps: LocationDeps, location: LocationRow): Promise<void> {
   const count = await locations.countBlockingOrdersInCurrentPeriod(
     deps.db,
     location.id,

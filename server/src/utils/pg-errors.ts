@@ -12,10 +12,7 @@
  * Recognising PostgreSQL errors by their SQLSTATE code.
  */
 
-export function isUniqueViolation(
-  error: unknown,
-  constraintName?: string,
-): boolean {
+export function isUniqueViolation(error: unknown, constraintName?: string): boolean {
   if (typeof error !== 'object' || error === null) {
     return false;
   }
@@ -27,18 +24,13 @@ export function isUniqueViolation(
 
   return (
     postgresError.code === '23505' &&
-    (
-      constraintName === undefined ||
-      postgresError.constraint === constraintName
-    )
+    (constraintName === undefined || postgresError.constraint === constraintName)
   );
 }
 
 /** True when a PostgreSQL exclusion constraint rejected a write. */
 export function isExclusionViolation(error: unknown): boolean {
   return (
-    typeof error === 'object' &&
-    error !== null &&
-    (error as { code?: string }).code === '23P01'
+    typeof error === 'object' && error !== null && (error as { code?: string }).code === '23P01'
   );
 }

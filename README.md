@@ -163,15 +163,15 @@ docker-compose.yml   PostgreSQL service
 
 ## Documentation
 
-| Document                                | Contents                                                                      |
-| --------------------------------------- | ----------------------------------------------------------------------------- |
-| [architecture.md](docs/architecture.md) | Stack, project structure, layer design, conventions, security decisions       |
-| [database.md](docs/database.md)         | Schema reference, ER diagram, transaction boundaries, migrations              |
-| [api.md](docs/api.md)                   | Endpoint contract, error format, sample requests and responses                |
-| [policies.md](docs/policies.md)         | Business rules, assumptions, and open questions for the department            |
-| [development.md](docs/development.md)   | Setup, commands, testing strategy, Postman, Newman, CI, load testing, roadmap |
+| Document                                    | Contents                                                                          |
+| ------------------------------------------- | --------------------------------------------------------------------------------- |
+| [architecture.md](docs/architecture.md)     | Stack, project structure, layer design, conventions, security decisions           |
+| [database.md](docs/database.md)             | Schema reference, ER diagram, transaction boundaries, migrations                  |
+| [api.md](docs/api.md)                       | Endpoint contract, error format, sample requests and responses                    |
+| [policies.md](docs/policies.md)             | Business rules, assumptions, and open questions for the department                |
+| [development.md](docs/development.md)       | Setup, commands, testing strategy, Postman, Newman, CI, load testing, roadmap     |
 | [frontend-guide.md](docs/frontend-guide.md) | Frontend structure, real API workflows, local run steps, safe feature development |
-| [deployment.md](docs/deployment.md)     | CI/CD pipelines, container publishing, release and deployment checklist       |
+| [deployment.md](docs/deployment.md)         | CI/CD pipelines, container publishing, release and deployment checklist           |
 
 **To make a decision about how the system behaves, [docs/policies.md](docs/policies.md)
 is the only document that needs department input.** The rest is implementation

@@ -202,7 +202,7 @@ and then:
 | Format, lint, type-check   | `format:check`, `lint`, `typecheck`                         | Always                                    |
 | Unit and integration tests | `npm run test:coverage` against a real PostgreSQL service   | Always — coverage uploaded as an artifact |
 | API collection (Newman)    | Boots the API, waits for `/health`, runs `npm run test:api` | `postman/**/*.json` exists (Phase 7)      |
-| Frontend build             | `npm run build --workspace client`                          | `client/vite.config.ts` exists  |
+| Frontend build             | `npm run build --workspace client`                          | `client/vite.config.ts` exists            |
 
 Any failing step fails the pipeline. The tests migrate their own database before
 running, and tests that need a genuinely empty database create and drop one.
@@ -242,19 +242,19 @@ failure.
 
 ## Roadmap
 
-| Phase | Scope                                      | Status      |
-| ----- | ------------------------------------------ | ----------- |
-| 1     | Scaffold, TypeScript, lint, Docker Compose | Verified    |
-| 2     | Schema, migration runner, seed             | Verified    |
-| 3     | Authentication and authorisation           | Verified    |
-| 4     | MVC skeleton and locations CRUD            | Verified    |
-| 5     | Menus, budgets, teacher ordering           | In progress |
-| 6     | Staff operations and reporting             | In progress |
-| 7     | Postman collection and Newman              | Planned     |
-| 8     | CI integration                             | In progress |
-| 9     | Load testing                               | Planned     |
+| Phase | Scope                                      | Status                          |
+| ----- | ------------------------------------------ | ------------------------------- |
+| 1     | Scaffold, TypeScript, lint, Docker Compose | Verified                        |
+| 2     | Schema, migration runner, seed             | Verified                        |
+| 3     | Authentication and authorisation           | Verified                        |
+| 4     | MVC skeleton and locations CRUD            | Verified                        |
+| 5     | Menus, budgets, teacher ordering           | In progress                     |
+| 6     | Staff operations and reporting             | In progress                     |
+| 7     | Postman collection and Newman              | Planned                         |
+| 8     | CI integration                             | In progress                     |
+| 9     | Load testing                               | Planned                         |
 | 10    | React/Vite frontend and API integration    | Implemented; validation pending |
-| 11    | Deployment                                 | Not started |
+| 11    | Deployment                                 | Not started                     |
 
 A phase is `Verified` only once it is implemented **and** its tests pass.
 `In progress` means the work is present but not yet proven green in CI. The

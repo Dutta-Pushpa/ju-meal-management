@@ -4,7 +4,10 @@ import type { Database } from '../db/pool.js';
 import { currentUser } from '../middleware/auth.js';
 import { updateUser } from '../services/user-admin.service.js';
 import { presentUser } from '../views/auth.view.js';
-import { listActiveTeachers as listActiveTeacherRows, listManagedUsers as listManagedUserRows } from '../models/user.model.js';
+import {
+  listActiveTeachers as listActiveTeacherRows,
+  listManagedUsers as listManagedUserRows,
+} from '../models/user.model.js';
 import { badRequest } from '../utils/errors.js';
 import { requireBoolean, requireEnum, requireInt, requireObject } from '../utils/validation.js';
 

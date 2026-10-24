@@ -1,6 +1,11 @@
 import { Router } from 'express';
 import type { Database } from '../db/pool.js';
-import { createMenuItem, deleteMenuItem, listManagedMenuItems, updateMenuItem } from '../controllers/menu.controller.js';
+import {
+  createMenuItem,
+  deleteMenuItem,
+  listManagedMenuItems,
+  updateMenuItem,
+} from '../controllers/menu.controller.js';
 import { requireAuth, requireRoleWithPermission } from '../middleware/auth.js';
 
 export function createMenuAdminRouter(deps: { db: Database; jwtSecret: string }): Router {

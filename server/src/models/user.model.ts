@@ -250,16 +250,18 @@ export async function revokeAllSessionsForUser(db: Queryable, userId: number): P
 }
 
 /** Safe user list for staff administration; never selects password hashes or token versions. */
-export async function listManagedUsers(db: Queryable): Promise<Array<{
-  id: number;
-  full_name: string;
-  email: string;
-  role: Role;
-  designation: string | null;
-  permissions: Permission[];
-  is_active: boolean;
-  created_at: Date;
-}>> {
+export async function listManagedUsers(db: Queryable): Promise<
+  Array<{
+    id: number;
+    full_name: string;
+    email: string;
+    role: Role;
+    designation: string | null;
+    permissions: Permission[];
+    is_active: boolean;
+    created_at: Date;
+  }>
+> {
   const { rows } = await db.query<{
     id: number;
     full_name: string;
@@ -279,7 +281,9 @@ export async function listManagedUsers(db: Queryable): Promise<Array<{
 }
 
 /** Active teacher choices for budget allocation; returns no authentication secrets. */
-export async function listActiveTeachers(db: Queryable): Promise<Array<{ id: number; full_name: string; email: string }>> {
+export async function listActiveTeachers(
+  db: Queryable,
+): Promise<Array<{ id: number; full_name: string; email: string }>> {
   const { rows } = await db.query<{ id: number; full_name: string; email: string }>(
     `SELECT id, full_name, email FROM users
       WHERE role = 'TEACHER' AND is_active

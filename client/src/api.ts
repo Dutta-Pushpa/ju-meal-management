@@ -30,11 +30,16 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     });
   } catch {
-    throw new ApiError('Could not connect to the API. Make sure the backend is running on port 4000.', 0, 'NETWORK_ERROR');
+    throw new ApiError(
+      'Could not connect to the API. Make sure the backend is running on port 4000.',
+      0,
+      'NETWORK_ERROR',
+    );
   }
 
   const payload = (await response.json().catch(() => ({}))) as {
-    data?: T; error?: { message?: string; code?: string; details?: ApiError['details'] };
+    data?: T;
+    error?: { message?: string; code?: string; details?: ApiError['details'] };
   };
   if (!response.ok) {
     throw new ApiError(

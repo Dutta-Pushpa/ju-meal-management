@@ -363,7 +363,9 @@ describe('GET /api/teacher/budget-periods', () => {
 
     const response = await request(app).get('/api/teacher/budget-periods').set(auth(teacherToken));
     expect(response.status).toBe(200);
-    expect(response.body.data.some((period: { name: string }) => period.name === 'List periods')).toBe(true);
+    expect(
+      response.body.data.some((period: { name: string }) => period.name === 'List periods'),
+    ).toBe(true);
     expect(response.body.data[0]).toHaveProperty('startsOn');
     expect(response.body.data[0]).not.toHaveProperty('amountPaisa');
   });
@@ -373,6 +375,8 @@ describe('GET /api/staff/teachers budget permissions', () => {
   it('allows staff who can adjust budgets to load teacher choices', async () => {
     const response = await request(app).get('/api/staff/teachers').set(auth(adjusterToken));
     expect(response.status).toBe(200);
-    expect(response.body.data.some((teacher: { id: number }) => teacher.id === teacherId)).toBe(true);
+    expect(response.body.data.some((teacher: { id: number }) => teacher.id === teacherId)).toBe(
+      true,
+    );
   });
 });
