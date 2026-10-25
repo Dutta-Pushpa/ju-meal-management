@@ -33,13 +33,15 @@ export interface RegisterInput {
   fullName: string;
   email: string;
   password: string;
-  role: Role;
+  role: 'TEACHER' | 'STAFF' | 'ADMIN';
   designation?: string | null;
+  adminKey?: string | null;
 }
 
 export interface LoginInput {
   email: string;
   password: string;
+  role?: string | null;
 }
 
 export interface RequestMeta {
@@ -57,6 +59,7 @@ export interface AuthDeps {
   jwtSecret: string;
   tokenLifetimeMinutes: number;
   bcryptCost: number;
+  adminKey?: string;
 }
 
 function toAuthUser(row: users.UserRow): AuthUser {
@@ -93,9 +96,18 @@ export async function registerUser(
   const email = input.email.trim().toLowerCase();
   const passwordHash = await hashPassword(input.password, deps.bcryptCost);
 
-  // TEACHER accounts are never given permissions. Granting them at creation
-  // would create a teacher who could act as staff.
-  const permissions: Permission[] = input.role === 'TEACHER' ? [] : [];
+  // TEACHER and STAFF accounts are never given permissions. Granting them at
+  // creation would create an account that could act beyond its role.
+  const permissions: Permission[] = [];
+
+  // ADMIN registration requires the shared admin key, validated server-side,
+  // unless an existing administrator is creating the account.
+  // The key is never echoed back in responses or audit metadata.
+  if (input.role === 'ADMIN' && actor?.role !== 'ADMIN') {
+    if (!input.adminKey || input.adminKey !== deps.adminKey) {
+      throw forbidden('The admin key is incorrect or missing.');
+    }
+  }
 
   try {
     const user = await users.insertUser(deps.db, {
@@ -111,8 +123,8 @@ export async function registerUser(
       action: 'user.created',
       entityType: 'user',
       entityId: user.id,
-      // No password, no hash. The metadata column is readable by anyone with
-      // audit access, so it must never hold a credential.
+      // No password, no hash, no admin key. The metadata column is readable by
+      // anyone with audit access, so it must never hold a credential or secret.
       metadata: { email: user.email, role: user.role, viaSelfRegistration: actor === undefined },
     });
 
@@ -158,6 +170,14 @@ export async function login(
     // Deliberately after the password check, so this cannot be used to probe for
     // whether an account exists.
     throw forbidden('This account has been deactivated. Contact an administrator.');
+  }
+
+  // Validate the requested login role against the user's actual role. A teacher
+  // cannot log in as staff or admin, and vice versa. When no role is sent, the
+  // user's actual role is used.
+  const requestedRole = input.role ?? user.role;
+  if (requestedRole !== user.role) {
+    throw forbidden(`The selected role does not match your account role (${user.role}).`);
   }
 
   // Upgrade the stored hash if it was made at a weaker cost than the current

@@ -98,17 +98,31 @@ export async function countOtherActiveAdmins(db: Queryable, userId: number): Pro
 export async function updateManagedUser(
   db: Queryable,
   userId: number,
-  input: { isActive: boolean; role: Role; permissions: Permission[] },
+  input: {
+    isActive: boolean;
+    role: Role;
+    permissions: Permission[];
+    fullName?: string | undefined;
+    email?: string | undefined;
+  },
 ): Promise<UserRow> {
   const { rows } = await db.query<UserRow>(
     `UPDATE users
-        SET is_active = $2, role = $3, permissions = $4::jsonb,
-            token_version = token_version + 1, updated_at = now()
+        SET is_active = $2,
+            full_name = COALESCE($3, full_name),
+            email = COALESCE($4, email),
+            token_version = token_version + 1,
+            updated_at = now()
       WHERE id = $1
       RETURNING ${USER_COLUMNS}`,
-    [userId, input.isActive, input.role, JSON.stringify(input.permissions)],
+    [userId, input.isActive, input.fullName ?? null, input.email ?? null],
   );
   return rows[0]!;
+}
+
+export async function deleteUserById(db: Queryable, userId: number): Promise<boolean> {
+  const { rowCount } = await db.query(`DELETE FROM users WHERE id = $1`, [userId]);
+  return (rowCount ?? 0) > 0;
 }
 
 export async function revokeManagedUserSessions(db: Queryable, userId: number): Promise<void> {

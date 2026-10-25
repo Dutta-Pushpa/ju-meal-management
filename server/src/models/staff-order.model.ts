@@ -26,9 +26,10 @@ export async function lockOrderStatus(db: Queryable, orderId: number) {
     teacher_id: number;
     order_date: string;
     status: StaffOrderRow['status'];
+    total_paisa: number;
   }>(
-    `SELECT id, teacher_id, to_char(order_date, 'YYYY-MM-DD') AS order_date, status
-       FROM orders WHERE id = $1 FOR UPDATE`,
+    `SELECT o.id, o.teacher_id, o.total_paisa, to_char(o.order_date, 'YYYY-MM-DD') AS order_date, o.status
+       FROM orders o WHERE o.id = $1 FOR UPDATE`,
     [orderId],
   );
   return rows[0];

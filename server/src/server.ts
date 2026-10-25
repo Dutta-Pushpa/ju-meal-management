@@ -56,7 +56,7 @@ async function main(): Promise<void> {
 
   const server = app.listen(config.PORT, () => {
     logger.info(
-      { port: config.PORT, environment: config.NODE_ENV, timezone: config.APP_TIMEZONE },
+      { port: config.PORT, environment: config.NODE_ENV },
       'JU Meal Management API listening',
     );
   });

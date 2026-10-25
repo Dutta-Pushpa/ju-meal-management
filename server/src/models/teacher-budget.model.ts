@@ -1,4 +1,5 @@
 import type { Queryable } from '../db/pool.js';
+import * as budgets from '../models/budget.model.js';
 
 export interface TeacherBudgetSummaryRow {
   period_id: number;
@@ -24,56 +25,28 @@ export interface TeacherLedgerRow {
   created_at: Date;
 }
 
+/** Monthly budget summary for a teacher. */
 export async function findBudgetSummary(
   db: Queryable,
   teacherId: number,
   periodId: number,
 ): Promise<TeacherBudgetSummaryRow | undefined> {
-  const { rows } = await db.query<TeacherBudgetSummaryRow>(
-    `SELECT p.id AS period_id, p.name AS period_name, p.starts_on, p.ends_on,
-            COALESCE(SUM(l.amount_paisa) FILTER (WHERE l.entry_type = 'allocation'), 0)::bigint AS allocated_paisa,
-            -COALESCE(SUM(l.amount_paisa) FILTER (WHERE l.entry_type = 'debit'), 0)::bigint AS spent_paisa,
-            COALESCE(SUM(l.amount_paisa) FILTER (WHERE l.entry_type = 'refund'), 0)::bigint AS refunded_paisa,
-            COALESCE(SUM(l.amount_paisa) FILTER (WHERE l.entry_type = 'adjustment'), 0)::bigint AS adjusted_paisa,
-            COALESCE(SUM(l.amount_paisa), 0)::bigint AS available_paisa
-       FROM budget_periods p
-       LEFT JOIN budget_ledger l
-         ON l.budget_period_id = p.id AND l.teacher_id = $1
-      WHERE p.id = $2
-      GROUP BY p.id`,
-    [teacherId, periodId],
-  );
-  return rows[0];
+  // Extract year and month from period_id (periodId format: YYYYMM) or find the period
+  const year = Math.floor(periodId / 100);
+  const month = periodId % 100;
+  const summary = await budgets.findMonthlyAllocationSummary(db, teacherId, year, month);
+  if (!summary) return undefined;
+  return {
+    period_id: periodId,
+    period_name: `Monthly ${summary.allocated_paisa_raw > 0 ? summary.allocated_paisa_raw : ''}`,
+    starts_on: '0000-01-01',
+    ends_on: '0000-12-31',
+    allocated_paisa: summary.allocated_paisa,
+    spent_paisa: summary.spent_paisa,
+    refunded_paisa: summary.refunded_paisa,
+    adjusted_paisa: summary.adjusted_paisa,
+    available_paisa: summary.available_paisa,
+  };
 }
 
-export async function countLedgerEntries(
-  db: Queryable,
-  teacherId: number,
-  periodId: number,
-): Promise<number> {
-  const { rows } = await db.query<{ total: number }>(
-    `SELECT count(*)::int AS total FROM budget_ledger
-      WHERE teacher_id = $1 AND budget_period_id = $2`,
-    [teacherId, periodId],
-  );
-  return rows[0]!.total;
-}
-
-export async function listLedgerEntries(
-  db: Queryable,
-  teacherId: number,
-  periodId: number,
-  limit: number,
-  offset: number,
-): Promise<TeacherLedgerRow[]> {
-  const { rows } = await db.query<TeacherLedgerRow>(
-    `SELECT id, teacher_id, budget_period_id, entry_type, amount_paisa, order_id,
-            reason, created_by, created_at
-       FROM budget_ledger
-      WHERE teacher_id = $1 AND budget_period_id = $2
-      ORDER BY created_at DESC, id DESC
-      LIMIT $3 OFFSET $4`,
-    [teacherId, periodId, limit, offset],
-  );
-  return rows;
-}
+export { countLedgerEntries, listLedgerEntries } from '../models/budget.model.js';

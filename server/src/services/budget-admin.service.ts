@@ -4,7 +4,7 @@ import { conflict, notFound } from '../utils/errors.js';
 import { isExclusionViolation, isUniqueViolation } from '../utils/pg-errors.js';
 import { writeAudit } from '../models/audit.model.js';
 import * as budget from '../models/budget.model.js';
-import * as teacherBudget from '../models/teacher-budget.model.js';
+import { TIMEZONE } from '../routes/location.routes.js';
 
 export async function createBudgetPeriod(
   db: Database,
@@ -14,22 +14,6 @@ export async function createBudgetPeriod(
   try {
     return await withTransaction(db, async (tx) => {
       const period = await budget.insertPeriod(tx, input);
-      let rolledOverTeachers = 0;
-      let rolledOverAmountPaisa = 0;
-      if (await budget.budgetRolloverEnabled(tx)) {
-        const balances = await budget.listRolloverBalances(tx, input.startsOn);
-        for (const balance of balances) {
-          await budget.insertAdjustment(tx, {
-            teacherId: balance.teacher_id,
-            periodId: period.id,
-            amountPaisa: balance.amount_paisa,
-            actorUserId,
-            reason: `Budget rollover from ${balance.source_period_name}`,
-          });
-          rolledOverTeachers += 1;
-          rolledOverAmountPaisa += balance.amount_paisa;
-        }
-      }
       await writeAudit(tx, {
         actorUserId,
         action: 'budget.period.created',
@@ -39,11 +23,11 @@ export async function createBudgetPeriod(
           name: period.name,
           startsOn: period.starts_on,
           endsOn: period.ends_on,
-          rolledOverTeachers,
-          rolledOverAmountPaisa,
+          rolledOverBalance: await budget.listRolloverBalances(tx, TIMEZONE),
+          
         },
       });
-      return { ...period, rolledOverTeachers, rolledOverAmountPaisa };
+      return { ...period, rolledOverBalance: await budget.listRolloverBalances(tx, TIMEZONE) };
     });
   } catch (error) {
     if (isExclusionViolation(error)) {
@@ -63,7 +47,8 @@ export async function allocateBudget(
   db: Database,
   input: {
     teacherId: number;
-    periodId: number;
+    year: number;
+    month: number;
     amountPaisa: number;
     reason: string;
     actorUserId: number;
@@ -74,24 +59,26 @@ export async function allocateBudget(
       if (!(await budget.findTeacher(tx, input.teacherId))) {
         throw notFound('No active teacher with that id.');
       }
-      if (!(await budget.findActivePeriod(tx, input.periodId))) {
-        throw notFound('No active budget period with that id.');
+      if (!(await budget.teacherExists(tx, input.teacherId))) {
+        throw notFound('No active teacher with that id.');
       }
-      const result = await budget.insertAllocation(tx, {
+      const result = await budget.insertMonthlyAllocation(tx, {
         teacherId: input.teacherId,
-        periodId: input.periodId,
+        year: input.year,
+        month: input.month,
         amountPaisa: input.amountPaisa,
         actorUserId: input.actorUserId,
         reason: input.reason,
       });
       await writeAudit(tx, {
         actorUserId: input.actorUserId,
-        action: 'budget.allocation.created',
-        entityType: 'budget_allocation',
+        action: 'budget.period.allocated',
+        entityType: 'budget_monthly_allocation',
         entityId: result.allocationId,
         metadata: {
           teacherId: input.teacherId,
-          budgetPeriodId: input.periodId,
+          year: input.year,
+          month: input.month,
           amountPaisa: input.amountPaisa,
         },
       });
@@ -99,7 +86,8 @@ export async function allocateBudget(
         allocation: {
           id: result.allocationId,
           teacherId: input.teacherId,
-          budgetPeriodId: input.periodId,
+          year: input.year,
+          month: input.month,
           amountPaisa: input.amountPaisa,
         },
         ledgerEntry: result.entry,
@@ -109,7 +97,7 @@ export async function allocateBudget(
     if (isUniqueViolation(error)) {
       throw conflict(
         'DUPLICATE_ALLOCATION',
-        'The teacher already has an allocation for this period.',
+        'The teacher already has an allocation for this year/month.',
       );
     }
     throw error;
@@ -164,8 +152,8 @@ export async function getBudgetLedger(
 ) {
   if (!(await budget.teacherExists(db, teacherId))) throw notFound('Teacher not found.');
   if (!(await budget.budgetPeriodExists(db, periodId))) throw notFound('Budget period not found.');
-  const total = await teacherBudget.countLedgerEntries(db, teacherId, periodId);
-  const entries = await teacherBudget.listLedgerEntries(
+  const total = await budget.countLedgerEntriesByPeriod(db, teacherId, periodId);
+  const entries = await budget.listLedgerEntriesByPeriod(
     db,
     teacherId,
     periodId,

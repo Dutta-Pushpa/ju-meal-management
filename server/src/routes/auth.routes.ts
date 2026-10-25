@@ -27,6 +27,7 @@ export function createAuthRouter(deps: {
     jwtSecret: deps.config.JWT_SECRET,
     tokenLifetimeMinutes: deps.config.JWT_EXPIRES_IN_MINUTES,
     bcryptCost: deps.config.BCRYPT_COST,
+    ...(deps.config.ADMIN_KEY !== undefined ? { adminKey: deps.config.ADMIN_KEY } : {}),
     allowSelfRegistration: deps.allowSelfRegistration,
   };
 

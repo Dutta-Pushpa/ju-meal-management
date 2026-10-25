@@ -153,10 +153,10 @@ export async function truncateAll(): Promise<void> {
   // defaults are restored here for the same reason the seed file restores them.
   await query(`
     INSERT INTO app_settings (key, value, description) VALUES
-      ('order_cutoff_time', '"12:00"', 'Daily ordering cutoff.'),
-      ('budget_rollover', 'false', 'When false, unspent budget does not carry over.'),
-      ('timezone', '"Asia/Dhaka"', 'Timezone for business dates and the cutoff.'),
-      ('ordering_disabled_dates', '[]', 'Dates on which ordering is disabled.')
+      
+      
+      
+      
     ON CONFLICT (key) DO NOTHING
   `);
 }

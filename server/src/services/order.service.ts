@@ -10,6 +10,8 @@ export interface PlaceOrderInput {
   foodLocationId: number;
   idempotencyKey: string;
   items: OrderItemInput[];
+  alternativeItemName?: string | null;
+  alternativeUnitPricePaisa?: number | null;
 }
 
 export async function placeOrder(db: Database, input: PlaceOrderInput) {
@@ -31,9 +33,6 @@ export async function placeOrder(db: Database, input: PlaceOrderInput) {
       }
 
       const rule = await orders.checkOrderingRules(tx, input.orderDate);
-      if (rule.disabled) {
-        throw unprocessable('ORDERING_DISABLED', 'Ordering is disabled for this date.');
-      }
       if (rule.closed) {
         throw unprocessable('ORDERING_CLOSED', 'The ordering cutoff for this date has passed.');
       }
@@ -67,9 +66,39 @@ export async function placeOrder(db: Database, input: PlaceOrderInput) {
         return sum + lineTotal;
       }, 0);
 
-      const available = await orders.getAvailableBalance(tx, input.teacherId, periodId);
+      const orderYear = parseInt(input.orderDate.slice(0, 4), 10);
+      const orderMonth = parseInt(input.orderDate.slice(5, 7), 10);
+
+      const available = await orders.getAvailableBalance(
+        tx,
+        input.teacherId,
+        periodId,
+        orderYear,
+        orderMonth,
+      );
+
+      const debtPolicy = await orders.getDebtPolicy(tx);
+
       if (totalPaisa > available) {
-        throw unprocessable('BUDGET_INSUFFICIENT', 'Order total exceeds the available balance.');
+        if (!debtPolicy.negativeBalanceAllowed) {
+          throw unprocessable('BUDGET_INSUFFICIENT', 'Order total exceeds the available balance.');
+        }
+        const resultingDebt = totalPaisa - available;
+        if (debtPolicy.maxDebtPaisa > 0 && resultingDebt > debtPolicy.maxDebtPaisa) {
+          throw unprocessable(
+            'BUDGET_INSUFFICIENT',
+            `Order total exceeds the permitted maximum debt limit of ৳${(debtPolicy.maxDebtPaisa / 100).toFixed(2)}.`,
+          );
+        }
+        if (debtPolicy.maxAdditionalOrders > 0) {
+          const currentNegativeOrders = await orders.countNegativeOrders(tx, input.teacherId);
+          if (currentNegativeOrders >= debtPolicy.maxAdditionalOrders) {
+            throw unprocessable(
+              'BUDGET_INSUFFICIENT',
+              `Permitted additional order limit (${debtPolicy.maxAdditionalOrders}) exceeded.`,
+            );
+          }
+        }
       }
 
       const orderId = await orders.createOrder(tx, {
@@ -78,11 +107,20 @@ export async function placeOrder(db: Database, input: PlaceOrderInput) {
         locationId: input.foodLocationId,
         totalPaisa,
         idempotencyKey: input.idempotencyKey,
+        alternativeItemName: input.alternativeItemName ?? null,
+        alternativeUnitPricePaisa: input.alternativeUnitPricePaisa ?? null,
       });
       for (const line of input.items) {
         await orders.createOrderItem(tx, orderId, byId.get(line.menuItemId)!, line);
       }
-      await orders.createDebit(tx, { teacherId: input.teacherId, periodId, orderId, totalPaisa });
+      await orders.createDebit(tx, {
+        teacherId: input.teacherId,
+        periodId,
+        orderId,
+        totalPaisa,
+        year: orderYear,
+        month: orderMonth,
+      });
       await orders.insertConfirmedEvent(tx, orderId, input.teacherId);
       return { ...(await loadOrder(tx, orderId)), replayed: false };
     },
@@ -150,7 +188,7 @@ export async function cancelOrder(
 
     const staffOverride = input.actorRole !== 'TEACHER';
     if (!staffOverride) {
-      const cutoff = await orders.checkOrderingRules(tx, order.order_date);
+      const cutoff = await orders.checkCancellationRules(tx, order.order_date);
       if (cutoff.closed) {
         throw unprocessable('CUTOFF_PASSED', 'The cancellation cutoff for this date has passed.');
       }

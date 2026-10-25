@@ -9,7 +9,14 @@
 export const ROLES = ['TEACHER', 'STAFF', 'ADMIN'] as const;
 export type Role = (typeof ROLES)[number];
 
-export const ORDER_STATUSES = ['CONFIRMED', 'COLLECTED', 'DELIVERED', 'CANCELLED'] as const;
+export const ORDER_STATUSES = [
+  'PENDING',
+  'ACCEPTED',
+  'CONFIRMED',
+  'COLLECTED',
+  'DELIVERED',
+  'CANCELLED',
+] as const;
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
 export const ORDER_ITEM_STATUSES = ['PENDING', 'COLLECTED', 'DELIVERED'] as const;

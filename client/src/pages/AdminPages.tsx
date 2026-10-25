@@ -7,7 +7,6 @@ import type {
   LedgerEntry,
   Location,
   MenuItem,
-  Permission,
   Role,
   User,
 } from '../types';
@@ -25,19 +24,6 @@ import {
   TableWrap,
   Textarea,
 } from '../ui';
-
-const ALL_PERMISSIONS: Permission[] = [
-  'locations:manage',
-  'menu_items:manage',
-  'budgets:view',
-  'budgets:allocate',
-  'budgets:adjust',
-  'orders:cancel',
-  'orders:manage_status',
-  'users:create',
-  'users:manage',
-  'settings:manage',
-];
 
 export function AdminLocations({ token }: { token: string }) {
   const [locations, setLocations] = useState<Location[]>([]);
@@ -538,10 +524,11 @@ export function AdminUsers({ token, sessionUser }: { token: string; sessionUser:
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [search, setSearch] = useState('');
+  const [roleFilter, setRoleFilter] = useState<'ALL' | 'TEACHER' | 'STAFF' | 'ADMIN'>('ALL');
   const [editUser, setEditUser] = useState<User | null>(null);
-  const [editRole, setEditRole] = useState<Role>('TEACHER');
+  const [editFullName, setEditFullName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
   const [editActive, setEditActive] = useState(true);
-  const [editPermissions, setEditPermissions] = useState<Permission[]>([]);
   const [busy, setBusy] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState({
@@ -570,16 +557,17 @@ export function AdminUsers({ token, sessionUser }: { token: string; sessionUser:
   }, [token, canManage]);
   const shown = useMemo(
     () =>
-      users.filter((u) =>
-        `${u.fullName} ${u.email} ${u.role}`.toLowerCase().includes(search.toLowerCase()),
-      ),
-    [users, search],
+      users.filter((u) => {
+        if (roleFilter !== 'ALL' && u.role !== roleFilter) return false;
+        return `${u.fullName} ${u.email} ${u.role}`.toLowerCase().includes(search.toLowerCase());
+      }),
+    [users, search, roleFilter],
   );
   function beginEdit(user: User) {
     setEditUser(user);
-    setEditRole(user.role);
+    setEditFullName(user.fullName);
+    setEditEmail(user.email);
     setEditActive(user.isActive);
-    setEditPermissions([...user.permissions]);
     setError('');
   }
   async function saveUser() {
@@ -588,13 +576,17 @@ export function AdminUsers({ token, sessionUser }: { token: string; sessionUser:
     setError('');
     setSuccess('');
     try {
-      const body =
-        sessionUser.role === 'ADMIN'
-          ? { role: editRole, isActive: editActive, permissions: editPermissions }
-          : { isActive: editActive };
-      await api(`/staff/users/${editUser.id}`, { token, method: 'PATCH', body });
+      await api(`/staff/users/${editUser.id}`, {
+        token,
+        method: 'PATCH',
+        body: {
+          fullName: editFullName.trim(),
+          email: editEmail.trim(),
+          isActive: editActive,
+        },
+      });
       setSuccess(
-        `Saved changes for ${editUser.fullName}. Their existing sessions were revoked by the server.`,
+        `Saved changes for ${editFullName.trim()}. Their existing sessions were revoked by the server.`,
       );
       setEditUser(null);
       await load();
@@ -602,6 +594,20 @@ export function AdminUsers({ token, sessionUser }: { token: string; sessionUser:
       setError(asMessage(e));
     } finally {
       setBusy(false);
+    }
+  }
+  async function deleteUserAccount(user: User) {
+    if (!window.confirm(`Are you sure you want to permanently delete ${user.fullName} (${user.email})?`)) {
+      return;
+    }
+    setError('');
+    setSuccess('');
+    try {
+      await api(`/staff/users/${user.id}`, { token, method: 'DELETE' });
+      setSuccess(`Account for ${user.fullName} was permanently deleted.`);
+      await load();
+    } catch (e) {
+      setError(asMessage(e));
     }
   }
   async function createUser(e: FormEvent) {
@@ -670,17 +676,30 @@ export function AdminUsers({ token, sessionUser }: { token: string; sessionUser:
         </Alert>
       ) : (
         <Card>
-          <div className="toolbar">
+          <div className="toolbar" style={{ flexWrap: 'wrap', gap: '0.75rem', alignItems: 'center' }}>
             <div>
               <h2>Account directory</h2>
               <p>{users.length} users from the database</p>
             </div>
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search name, email or role…"
-              aria-label="Search users"
-            />
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginLeft: 'auto' }}>
+              <span className="field-label" style={{ margin: 0, fontWeight: 600 }}>Filter:</span>
+              <Select
+                value={roleFilter}
+                onChange={(e) => setRoleFilter(e.target.value as 'ALL' | 'TEACHER' | 'STAFF' | 'ADMIN')}
+                aria-label="Filter users by role"
+              >
+                <option value="ALL">All roles</option>
+                <option value="TEACHER">Teachers only</option>
+                <option value="STAFF">Staff only</option>
+                <option value="ADMIN">Admins only</option>
+              </Select>
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search name, email or role…"
+                aria-label="Search users"
+              />
+            </div>
           </div>
           {loading ? (
             <Loading />
@@ -691,7 +710,6 @@ export function AdminUsers({ token, sessionUser }: { token: string; sessionUser:
                   <th>Account</th>
                   <th>Role</th>
                   <th>Status</th>
-                  <th>Permissions</th>
                   <th>Created</th>
                   <th></th>
                 </tr>
@@ -716,13 +734,6 @@ export function AdminUsers({ token, sessionUser }: { token: string; sessionUser:
                     <td>
                       <StatusPill status={u.isActive ? 'ACTIVE' : 'INACTIVE'} />
                     </td>
-                    <td>
-                      {u.role === 'ADMIN'
-                        ? 'All permissions'
-                        : u.permissions.length
-                          ? `${u.permissions.length} assigned`
-                          : 'None assigned'}
-                    </td>
                     <td>{new Date(u.createdAt).toLocaleDateString()}</td>
                     <td>
                       <div className="button-row table-actions">
@@ -736,6 +747,15 @@ export function AdminUsers({ token, sessionUser }: { token: string; sessionUser:
                               <Button variant="secondary" onClick={() => void quickToggle(u)}>
                                 {u.isActive ? 'Deactivate' : 'Activate'}
                               </Button>
+                              {sessionUser.role === 'ADMIN' && (
+                                <Button
+                                  variant="ghost"
+                                  style={{ color: '#b91c1c' }}
+                                  onClick={() => void deleteUserAccount(u)}
+                                >
+                                  Delete
+                                </Button>
+                              )}
                             </>
                           )}
                       </div>
@@ -745,7 +765,7 @@ export function AdminUsers({ token, sessionUser }: { token: string; sessionUser:
               </tbody>
             </TableWrap>
           ) : (
-            <Empty title="No users match this search" />
+            <Empty title="No users match this filter or search" />
           )}
         </Card>
       )}
@@ -827,15 +847,40 @@ export function AdminUsers({ token, sessionUser }: { token: string; sessionUser:
             aria-labelledby="edit-user-heading"
           >
             <div className="modal-header">
-              <h2 id="edit-user-heading">Edit {editUser.fullName}</h2>
+              <h2 id="edit-user-heading">Edit User Account</h2>
               <button className="icon-button" onClick={() => setEditUser(null)} aria-label="Close">
                 ×
               </button>
             </div>
             <p>
-              {editUser.email} · account ID {editUser.id}
+              Account ID #{editUser.id} · {editUser.role}
             </p>
-            <div className="form-stack">
+            <form
+              className="form-stack"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void saveUser();
+              }}
+            >
+              <Field label="Full name">
+                <Input
+                  required
+                  maxLength={200}
+                  value={editFullName}
+                  onChange={(e) => setEditFullName(e.target.value)}
+                  placeholder="Full name"
+                />
+              </Field>
+              <Field label="University email">
+                <Input
+                  required
+                  type="email"
+                  maxLength={254}
+                  value={editEmail}
+                  onChange={(e) => setEditEmail(e.target.value)}
+                  placeholder="Email"
+                />
+              </Field>
               <label className="check-line">
                 <input
                   type="checkbox"
@@ -844,52 +889,15 @@ export function AdminUsers({ token, sessionUser }: { token: string; sessionUser:
                 />{' '}
                 Account is active
               </label>
-              {sessionUser.role === 'ADMIN' && (
-                <>
-                  <Field label="Role">
-                    <Select value={editRole} onChange={(e) => setEditRole(e.target.value as Role)}>
-                      <option value="TEACHER">Teacher</option>
-                      <option value="STAFF">Staff</option>
-                      <option value="ADMIN">Administrator</option>
-                    </Select>
-                  </Field>
-                  <div className="permission-box">
-                    <div className="card-heading">
-                      <div>
-                        <h3>Permissions</h3>
-                        <p>Admin accounts always bypass individual permission checks.</p>
-                      </div>
-                    </div>
-                    <div className="permission-grid">
-                      {ALL_PERMISSIONS.map((permission) => (
-                        <label className="check-line" key={permission}>
-                          <input
-                            type="checkbox"
-                            checked={editPermissions.includes(permission)}
-                            onChange={(e) =>
-                              setEditPermissions((old) =>
-                                e.target.checked
-                                  ? [...old, permission]
-                                  : old.filter((p) => p !== permission),
-                              )
-                            }
-                          />
-                          {permission}
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                </>
-              )}
               <div className="modal-actions">
-                <Button variant="secondary" onClick={() => setEditUser(null)}>
+                <Button type="button" variant="secondary" onClick={() => setEditUser(null)}>
                   Cancel
                 </Button>
-                <Button disabled={busy} onClick={() => void saveUser()}>
+                <Button type="submit" disabled={busy}>
                   {busy ? 'Saving…' : 'Save account'}
                 </Button>
               </div>
-            </div>
+            </form>
           </div>
         </div>
       )}
@@ -1406,9 +1414,12 @@ export function AdminSettings({ token }: { token: string }) {
     setSettings([]);
     try {
       const values = await api<AppSetting[]>('/staff/settings', { token });
-      setSettings(values);
+      const filtered = values.filter(
+        (s) => s.key !== 'max_debt_paisa' && s.key !== 'negative_balance_allowed',
+      );
+      setSettings(filtered);
       const next: Record<string, string> = {};
-      values.forEach((setting) => {
+      filtered.forEach((setting) => {
         next[setting.key] = Array.isArray(setting.value)
           ? setting.value.join('\n')
           : String(setting.value);
@@ -1425,6 +1436,10 @@ export function AdminSettings({ token }: { token: string }) {
   }, [token]);
   function valueFor(setting: AppSetting): unknown {
     const raw = drafts[setting.key] ?? '';
+    if (setting.key === 'max_additional_orders') {
+      const parsed = Number.parseInt(raw, 10);
+      return Number.isNaN(parsed) ? 0 : parsed;
+    }
     if (setting.key === 'budget_rollover') return raw === 'true';
     if (setting.key === 'ordering_disabled_dates')
       return [
@@ -1456,13 +1471,12 @@ export function AdminSettings({ token }: { token: string }) {
     }
   }
   const descriptions: Record<string, string> = {
-    order_cutoff_time:
-      'Orders and teacher cancellations are evaluated against this local cutoff time.',
-    timezone: 'IANA timezone used to interpret order dates and the cutoff.',
-    budget_rollover:
-      'When enabled, positive unspent balances roll forward only when a new period is created.',
-    ordering_disabled_dates:
-      'One YYYY-MM-DD date per line; ordering will be disabled on these dates.',
+    order_placement_deadline:
+      'Latest clock time (Dhaka business time) a teacher may place an order.',
+    order_cancellation_deadline:
+      'Latest clock time (Dhaka business time) an order may be cancelled.',
+    max_additional_orders:
+      'Maximum number of additional orders a teacher may place beyond their balance.',
   };
   return (
     <>
@@ -1499,37 +1513,37 @@ export function AdminSettings({ token }: { token: string }) {
                 </div>
                 <span className="setting-key">{setting.key}</span>
               </div>
-              {setting.key === 'budget_rollover' ? (
-                <label className="check-line setting-toggle">
-                  <input
-                    type="checkbox"
-                    checked={(drafts[setting.key] ?? String(setting.value)) === 'true'}
-                    onChange={(e) =>
-                      setDrafts({ ...drafts, [setting.key]: String(e.target.checked) })
-                    }
-                  />{' '}
-                  Enable budget rollover
-                </label>
-              ) : setting.key === 'ordering_disabled_dates' ? (
-                <Field
-                  label="Disabled dates"
-                  hint="Use one valid YYYY-MM-DD date per line. The API accepts up to 366 dates."
-                >
-                  <Textarea
-                    rows={5}
+              {setting.key === 'max_additional_orders' ? (
+                <Field label="Max additional orders" hint="Whole number, 0 or greater">
+                  <Input
+                    type="number"
+                    min="0"
+                    step="1"
                     value={drafts[setting.key] ?? ''}
                     onChange={(e) => setDrafts({ ...drafts, [setting.key]: e.target.value })}
-                    placeholder="2026-12-16"
+                    placeholder="0"
                   />
                 </Field>
-              ) : (
+              ) : setting.key === 'order_placement_deadline' || setting.key === 'order_cancellation_deadline' ? (
                 <Field
-                  label={setting.key === 'order_cutoff_time' ? 'Cutoff time (24-hour)' : 'Timezone'}
+                  label={
+                    setting.key === 'order_placement_deadline'
+                      ? 'Order placement deadline (24-hour HH:mm)'
+                      : 'Cancellation deadline (24-hour HH:mm)'
+                  }
+                  hint="e.g. 12:30"
                 >
                   <Input
                     value={drafts[setting.key] ?? ''}
                     onChange={(e) => setDrafts({ ...drafts, [setting.key]: e.target.value })}
-                    placeholder={setting.key === 'order_cutoff_time' ? '12:00' : 'Asia/Dhaka'}
+                    placeholder="12:30"
+                  />
+                </Field>
+              ) : (
+                <Field label="Value">
+                  <Input
+                    value={drafts[setting.key] ?? ''}
+                    onChange={(e) => setDrafts({ ...drafts, [setting.key]: e.target.value })}
                   />
                 </Field>
               )}

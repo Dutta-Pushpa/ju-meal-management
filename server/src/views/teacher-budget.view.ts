@@ -1,4 +1,5 @@
-import type { TeacherBudgetSummaryRow, TeacherLedgerRow } from '../models/teacher-budget.model.js';
+import type { TeacherBudgetSummaryRow } from '../models/teacher-budget.model.js';
+import type { BudgetEntryRow } from '../models/budget.model.js';
 
 function money(amountPaisa: number) {
   const sign = amountPaisa < 0 ? '-' : '';
@@ -24,14 +25,14 @@ export function presentTeacherBudget(row: TeacherBudgetSummaryRow) {
   };
 }
 
-export function presentTeacherLedgerEntry(row: TeacherLedgerRow) {
+export function presentTeacherLedgerEntry(row: BudgetEntryRow) {
   return {
     id: row.id,
     teacherId: row.teacher_id,
     budgetPeriodId: row.budget_period_id,
     entryType: row.entry_type,
     amount: money(row.amount_paisa),
-    orderId: row.order_id,
+    orderId: row.order_id ?? null,
     reason: row.reason,
     createdBy: row.created_by,
     createdAt: row.created_at.toISOString(),

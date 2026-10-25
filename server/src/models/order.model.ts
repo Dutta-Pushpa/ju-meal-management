@@ -18,7 +18,7 @@ export interface CreatedOrder {
   order_date: string;
   food_location_id: number;
   location_name: string;
-  status: 'CONFIRMED' | 'COLLECTED' | 'DELIVERED' | 'CANCELLED';
+  status: 'PENDING' | 'ACCEPTED' | 'CONFIRMED' | 'COLLECTED' | 'DELIVERED' | 'CANCELLED';
   total_paisa: number;
   confirmed_at: Date;
 }
@@ -67,17 +67,30 @@ export async function checkOrderingRules(
   db: Queryable,
   orderDate: string,
 ): Promise<{ closed: boolean; disabled: boolean }> {
-  const { rows } = await db.query<{ closed: boolean; disabled: boolean }>(
-    `SELECT now() >= (($1::date + COALESCE(
-              (SELECT value #>> '{}' FROM app_settings WHERE key = 'order_cutoff_time'), '12:00'
-            )::time) AT TIME ZONE COALESCE(
-              (SELECT value #>> '{}' FROM app_settings WHERE key = 'timezone'), 'Asia/Dhaka'
-            )) AS closed,
-            EXISTS (
-              SELECT 1 FROM app_settings
-               WHERE key = 'ordering_disabled_dates'
-                 AND value @> to_jsonb($1::text)
-            ) AS disabled`,
+  const { rows } = await db.query<{ closed: boolean }>(
+    `SELECT (now() AT TIME ZONE 'Asia/Dhaka') >=
+            (($1::date +
+              COALESCE(
+                (SELECT value #>> '{}' FROM app_settings WHERE key = 'order_placement_deadline'), '12:30'
+              )::time) AT TIME ZONE 'Asia/Dhaka') AS closed`,
+    [orderDate],
+  );
+  return { closed: rows[0]!.closed, disabled: false };
+}
+
+/**
+ * Check whether an order can still be cancelled against the configured
+ * cancellation deadline and the order's own state.
+ */
+export async function checkCancellationRules(
+  db: Queryable,
+  orderDate: string,
+): Promise<{ closed: boolean }> {
+  const { rows } = await db.query<{ closed: boolean }>(
+    `SELECT (now() AT TIME ZONE 'Asia/Dhaka') >=
+            (($1::date + COALESCE(
+              (SELECT value #>> '{}' FROM app_settings WHERE key = 'order_cancellation_deadline'), '13:00'
+            )::time) AT TIME ZONE 'Asia/Dhaka') AS closed`,
     [orderDate],
   );
   return rows[0]!;
@@ -109,17 +122,85 @@ export async function findPricedItems(db: Queryable, ids: number[]): Promise<Pri
   return rows;
 }
 
+export interface DebtPolicy {
+  negativeBalanceAllowed: boolean;
+  maxDebtPaisa: number;
+  maxAdditionalOrders: number;
+}
+
+export async function getDebtPolicy(db: Queryable): Promise<DebtPolicy> {
+  const { rows } = await db.query<{ key: string; value: unknown }>(
+    `SELECT key, value FROM app_settings
+      WHERE key IN ('negative_balance_allowed', 'max_debt_paisa', 'max_additional_orders')`,
+  );
+  const map = new Map(rows.map((r) => [r.key, r.value]));
+  return {
+    negativeBalanceAllowed:
+      map.get('negative_balance_allowed') === true || map.get('negative_balance_allowed') === 'true',
+    maxDebtPaisa: Number(map.get('max_debt_paisa') ?? 0),
+    maxAdditionalOrders: Number(map.get('max_additional_orders') ?? 0),
+  };
+}
+
+export async function countNegativeOrders(
+  db: Queryable,
+  teacherId: number,
+): Promise<number> {
+  const { rows } = await db.query<{ count: number }>(
+    `SELECT count(*)::int AS count FROM orders
+      WHERE teacher_id = $1 AND status NOT IN ('CANCELLED')`,
+    [teacherId],
+  );
+  return rows[0]?.count ?? 0;
+}
+
 export async function getAvailableBalance(
   db: Queryable,
   teacherId: number,
-  periodId: number,
+  periodId?: number,
+  year?: number,
+  month?: number,
 ): Promise<number> {
+  // If year & month are specified, check monthly allocation first
+  if (year !== undefined && month !== undefined) {
+    const monthly = await db.query<{ amount_paisa: number }>(
+      `SELECT COALESCE(SUM(a.allocated_paisa), 0) + COALESCE(SUM(a.carried_forward_paisa), 0)
+              + COALESCE(SUM(l.amount_paisa), 0)::bigint AS amount_paisa
+         FROM budget_monthly_allocations a
+         LEFT JOIN budget_ledger l
+           ON l.teacher_id = a.teacher_id
+          AND l.year = a.year
+          AND l.month = a.month
+        WHERE a.teacher_id = $1 AND a.year = $2 AND a.month = $3
+        GROUP BY a.id`,
+      [teacherId, year, month],
+    );
+    if (monthly.rows.length > 0 && monthly.rows[0]) {
+      return Number(monthly.rows[0].amount_paisa);
+    }
+  }
+
+  // Fallback or period-based ledger calculation
+  if (periodId !== undefined) {
+    const { rows } = await db.query<{ amount_paisa: number }>(
+      `SELECT COALESCE(SUM(amount_paisa), 0)::bigint AS amount_paisa
+         FROM budget_ledger
+        WHERE teacher_id = $1 AND budget_period_id = $2`,
+      [teacherId, periodId],
+    );
+    if (rows.length > 0 && rows[0]) {
+      return Number(rows[0].amount_paisa);
+    }
+  }
+
+  // Global ledger balance fallback
   const { rows } = await db.query<{ amount_paisa: number }>(
     `SELECT COALESCE(SUM(amount_paisa), 0)::bigint AS amount_paisa
-       FROM budget_ledger WHERE teacher_id = $1 AND budget_period_id = $2`,
-    [teacherId, periodId],
+       FROM budget_ledger
+      WHERE teacher_id = $1`,
+    [teacherId],
   );
-  return rows[0]!.amount_paisa;
+  return Number(rows[0]?.amount_paisa ?? 0);
 }
 
 export async function createOrder(
@@ -130,14 +211,69 @@ export async function createOrder(
     locationId: number;
     totalPaisa: number;
     idempotencyKey: string;
+    alternativeItemName?: string | null;
+    alternativeUnitPricePaisa?: number | null;
+    status?: string;
   },
 ): Promise<number> {
+  const status = input.status ?? 'CONFIRMED';
   const { rows } = await db.query<{ id: number }>(
-    `INSERT INTO orders (teacher_id, food_location_id, order_date, total_paisa, idempotency_key)
-     VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-    [input.teacherId, input.locationId, input.orderDate, input.totalPaisa, input.idempotencyKey],
+    `INSERT INTO orders (teacher_id, food_location_id, order_date, total_paisa, idempotency_key,
+             alternative_item_name, alternative_unit_price_paisa, status)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+    [
+      input.teacherId,
+      input.locationId,
+      input.orderDate,
+      input.totalPaisa,
+      input.idempotencyKey,
+      input.alternativeItemName ?? null,
+      input.alternativeUnitPricePaisa ?? null,
+      status,
+    ],
   );
   return rows[0]!.id;
+}
+
+export async function processOrder(db: Queryable, orderId: number): Promise<void> {
+  await db.query(
+    `UPDATE orders SET status = 'ACCEPTED' WHERE id = $1 AND status = 'PENDING'`,
+    [orderId],
+  );
+}
+
+export async function confirmDelivery(
+  db: Queryable,
+  orderId: number,
+  actualCostPaisa: number,
+  actorId: number,
+  note: string | null,
+): Promise<void> {
+  await db.query(
+    `UPDATE orders
+      SET status = 'DELIVERED',
+          actual_cost_paisa = $2,
+          delivery_confirmed_at = now(),
+          delivery_confirmed_by = $4
+      WHERE id = $1 AND status = 'ACCEPTED'`,
+    [orderId, actualCostPaisa, actorId],
+  );
+  await insertStatusEvent(db, orderId, 'ACCEPTED', 'DELIVERED', actorId, note);
+}
+
+export async function insertStatusEvent(
+  db: Queryable,
+  orderId: number,
+  oldStatus: string,
+  newStatus: string,
+  actorId: number,
+  note: string | null,
+): Promise<void> {
+  await db.query(
+    `INSERT INTO order_status_events (order_id, old_status, new_status, changed_by, note)
+      VALUES ($1, $2, $3, $4, $5)`,
+    [orderId, oldStatus, newStatus, actorId, note],
+  );
 }
 
 export async function createOrderItem(
@@ -148,8 +284,8 @@ export async function createOrderItem(
 ): Promise<void> {
   await db.query(
     `INSERT INTO order_items
-       (order_id, menu_item_id, item_name_snapshot, unit_price_paisa_snapshot, quantity, line_total_paisa, notes)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        (order_id, menu_item_id, item_name_snapshot, unit_price_paisa_snapshot, quantity, line_total_paisa, notes)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)`,
     [
       orderId,
       item.id,
@@ -164,13 +300,27 @@ export async function createOrderItem(
 
 export async function createDebit(
   db: Queryable,
-  input: { teacherId: number; periodId: number; orderId: number; totalPaisa: number },
+  input: {
+    teacherId: number;
+    periodId: number;
+    orderId: number;
+    totalPaisa: number;
+    year?: number;
+    month?: number;
+  },
 ): Promise<void> {
   await db.query(
     `INSERT INTO budget_ledger
-       (teacher_id, budget_period_id, entry_type, amount_paisa, order_id, reason, created_by)
-     VALUES ($1, $2, 'debit', $3, $4, 'Meal order', $1)`,
-    [input.teacherId, input.periodId, -input.totalPaisa, input.orderId],
+       (teacher_id, budget_period_id, entry_type, amount_paisa, order_id, reason, created_by, year, month)
+     VALUES ($1, $2, 'debit', $3, $4, 'Meal order', $1, $5, $6)`,
+    [
+      input.teacherId,
+      input.periodId,
+      -input.totalPaisa,
+      input.orderId,
+      input.year ?? null,
+      input.month ?? null,
+    ],
   );
 }
 
@@ -315,7 +465,7 @@ export async function findOrderBudgetPeriod(
 export async function cancelOrder(db: Queryable, orderId: number): Promise<void> {
   await db.query(
     `UPDATE orders SET status = 'CANCELLED', cancelled_at = now()
-      WHERE id = $1 AND status = 'CONFIRMED'`,
+      WHERE id = $1 AND status IN ('PENDING', 'ACCEPTED', 'CONFIRMED')`,
     [orderId],
   );
 }

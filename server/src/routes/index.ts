@@ -34,7 +34,6 @@ export function createApiRouter(deps: {
     createLocationRouter({
       db: deps.db,
       jwtSecret: deps.config.JWT_SECRET,
-      timezone: deps.config.APP_TIMEZONE,
     }),
   );
   router.use(

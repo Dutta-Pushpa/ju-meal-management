@@ -21,17 +21,18 @@ import { getMenu } from '../controllers/menu.controller.js';
  * and otherwise requires the permission, so a staff account limited to
  * collection work cannot edit vendors.
  */
+export const TIMEZONE = 'Asia/Dhaka';
+
 export function createLocationRouter(deps: {
   db: Database;
   jwtSecret: string;
-  timezone: string;
 }): Router {
   const router = Router();
 
   const auth = { db: deps.db, jwtSecret: deps.jwtSecret };
   const controllerDeps: LocationControllerDeps = {
     db: deps.db,
-    timezone: deps.timezone,
+    timezone: TIMEZONE,
   };
 
   const canManage = requireRoleWithPermission(['STAFF'], 'locations:manage');

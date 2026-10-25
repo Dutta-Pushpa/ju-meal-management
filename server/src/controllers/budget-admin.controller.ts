@@ -34,8 +34,7 @@ export function createPeriod(db: Database) {
         endsOn: period.ends_on,
         isActive: period.is_active,
         createdAt: period.created_at.toISOString(),
-        rolledOverTeachers: period.rolledOverTeachers,
-        rolledOverAmountPaisa: period.rolledOverAmountPaisa,
+        rolledOverBalance: period.rolledOverBalance,
       },
     });
   };
@@ -47,7 +46,8 @@ export function allocate(db: Database) {
     const body = requireObject(req.body ?? {}, 'body');
     const result = await allocateBudget(db, {
       teacherId: requireInt(body['teacherId'], 'teacherId', { min: 1 }),
-      periodId: requireInt(body['budgetPeriodId'], 'budgetPeriodId', { min: 1 }),
+      year: requireInt(body['year'], 'year', { min: 2000, max: 2099 }),
+      month: requireInt(body['month'], 'month', { min: 1, max: 12 }),
       amountPaisa: requireInt(body['amountPaisa'], 'amountPaisa', {
         min: 1,
         max: MAX_AMOUNT_PAISA,

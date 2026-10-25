@@ -336,12 +336,13 @@ describe('app_settings', () => {
     );
 
     const keys = rows.map((row) => row.key);
-    expect(keys).toContain('order_cutoff_time');
-    expect(keys).toContain('budget_rollover');
-    expect(keys).toContain('timezone');
-    expect(keys).toContain('ordering_disabled_dates');
+    expect(keys).toContain('order_placement_deadline');
+    expect(keys).toContain('order_cancellation_deadline');
+    expect(keys).toContain('negative_balance_allowed');
+    expect(keys).toContain('max_debt_paisa');
+    expect(keys).toContain('max_additional_orders');
 
-    const cutoff = rows.find((row) => row.key === 'order_cutoff_time');
-    expect(cutoff?.value).toBe('12:00');
+    const deadline = rows.find((row) => row.key === 'order_placement_deadline');
+    expect(deadline?.value).toBe('"12:30"');
   });
 });

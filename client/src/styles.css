@@ -1985,6 +1985,17 @@ tfoot th {
   font-size: 17px;
   margin-left: auto;
 }
+.auth-form .password-toggle {
+  margin-top: 5px;
+  min-width: 40px;
+  padding: 12px 8px;
+  font-size: 11px;
+  border-radius: 6px;
+  font-weight: 500;
+}
+.auth-form .password-toggle:hover {
+  background-color: rgba(153, 154, 175, 0.15);
+}
 .auth-switch {
   margin: 18px 0;
   text-align: center;

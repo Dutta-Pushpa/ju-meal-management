@@ -27,6 +27,8 @@ export interface AuthControllerDeps extends AuthDeps {
   jwtSecret: string;
   /** Open self-registration, allowed only outside production. */
   allowSelfRegistration: boolean;
+  /** Admin key for creating ADMIN accounts (may be undefined when not configured). */
+  adminKey?: string;
 }
 
 function requestMeta(req: Request): {
@@ -45,8 +47,7 @@ export function register(deps: AuthControllerDeps) {
     const actor = req.auth;
 
     // In production, creating accounts is an administrative act. An open
-    // registration endpoint would let anyone create a TEACHER, and every
-    // teacher can read the budget of that account.
+    // registration endpoint would let anyone create a TEACHER or STAFF account.
     if (!deps.allowSelfRegistration && !actor) {
       throw unauthorized('Account creation requires an administrator.');
     }
@@ -58,6 +59,8 @@ export function register(deps: AuthControllerDeps) {
     const email = requireString(readBody(req, 'email'), 'email', { maxLength: 254 });
     const password = readBody(req, 'password');
     const role = requireEnum(readBody(req, 'role') ?? 'TEACHER', 'role', ROLES);
+    const adminKeyInput = readBody(req, 'adminKey');
+    const adminKey = typeof adminKeyInput === 'string' ? adminKeyInput : null;
 
     if (!isValidEmail(email)) {
       throw new ValidationError([
@@ -71,11 +74,10 @@ export function register(deps: AuthControllerDeps) {
       ]);
     }
 
-    // Public self-registration is teacher-only, even in development. The role
-    // field is user-controlled JSON, so the UI hiding staff/admin choices is not
-    // an authorization control.
-    if (!actor && role !== 'TEACHER') {
-      throw forbidden('Self-registration can only create teacher accounts.');
+    // Public self-registration allows teacher and staff accounts. ADMIN always
+    // requires the shared admin key, validated server-side by the service.
+    if (!actor && role === 'ADMIN' && !adminKey) {
+      throw forbidden('The admin key is required to register an administrator account.');
     }
 
     // A staff member with users:create may create teacher accounts, but only an
@@ -84,7 +86,7 @@ export function register(deps: AuthControllerDeps) {
       throw badRequest('Only an administrator may create staff or admin accounts.');
     }
 
-    const user = await registerUser(deps, { fullName, email, password, role }, actor);
+    const user = await registerUser(deps, { fullName, email, password, role, adminKey }, actor);
 
     res.status(201).json({ data: presentUser(user) });
   };
@@ -95,6 +97,8 @@ export function login(deps: AuthControllerDeps) {
   return async (req: Request, res: Response): Promise<void> => {
     const email = requireString(readBody(req, 'email'), 'email', { maxLength: 254 });
     const password = readBody(req, 'password');
+    const roleInput = readBody(req, 'role');
+    const role = typeof roleInput === 'string' ? roleInput : null;
 
     if (typeof password !== 'string') {
       throw new ValidationError([
@@ -102,7 +106,7 @@ export function login(deps: AuthControllerDeps) {
       ]);
     }
 
-    const result = await loginService(deps, { email, password }, requestMeta(req));
+    const result = await loginService(deps, { email, password, role }, requestMeta(req));
 
     res.status(200).json(presentLogin(presentUser(result.user), result.token));
   };

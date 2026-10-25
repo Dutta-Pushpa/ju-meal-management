@@ -8,7 +8,7 @@ import {
   type SettingKey,
 } from '../services/settings.service.js';
 import { badRequest } from '../utils/errors.js';
-import { requireBoolean, requireObject, requireString } from '../utils/validation.js';
+import { requireBoolean, requireInt, requireObject, requireString } from '../utils/validation.js';
 
 export function getSettings(db: Database) {
   return async (_req: Request, res: Response): Promise<void> => {
@@ -25,41 +25,39 @@ export function patchSetting(db: Database) {
     const body = requireObject(req.body ?? {}, 'body');
     if (!Object.hasOwn(body, 'value')) throw badRequest('value is required.');
     const value = validateSetting(key as SettingKey, body['value']);
+
+    if (key === 'order_cancellation_deadline' || key === 'order_placement_deadline') {
+      const allSettings = await listSettings(db);
+      const settingsMap = new Map(allSettings.map((s) => [s.key, s.value]));
+      const placement = key === 'order_placement_deadline' ? (value as string) : String(settingsMap.get('order_placement_deadline') ?? '12:30');
+      const cancellation = key === 'order_cancellation_deadline' ? (value as string) : String(settingsMap.get('order_cancellation_deadline') ?? '13:00');
+
+      if (cancellation < placement) {
+        throw badRequest('The cancellation deadline cannot be earlier than the order deadline.');
+      }
+    }
+
     const row = await updateSetting(db, key as SettingKey, value, currentUser(req).id);
     res.status(200).json({ data: presentSetting(row) });
   };
 }
 
 function validateSetting(key: SettingKey, value: unknown): unknown {
-  if (key === 'order_cutoff_time') {
+  if (key === 'order_placement_deadline' || key === 'order_cancellation_deadline') {
     const time = requireString(value, 'value');
     if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time))
-      throw badRequest('value must be a valid HH:mm time.');
+      throw badRequest('value must be a valid HH:mm time in 24-hour format.');
     return time;
   }
-  if (key === 'budget_rollover') return requireBoolean(value, 'value');
-  if (key === 'timezone') {
-    const timezone = requireString(value, 'value');
-    try {
-      new Intl.DateTimeFormat('en', { timeZone: timezone });
-    } catch {
-      throw badRequest('value must be a valid IANA timezone.');
-    }
-    return timezone;
-  }
+  if (key === 'negative_balance_allowed')
+    return requireBoolean(value, 'value');
   if (
-    !Array.isArray(value) ||
-    value.length > 366 ||
-    value.some(
-      (date) =>
-        typeof date !== 'string' ||
-        !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
-        Number.isNaN(Date.parse(`${date}T00:00:00.000Z`)) ||
-        new Date(`${date}T00:00:00.000Z`).toISOString().slice(0, 10) !== date,
-    )
-  )
-    throw badRequest('value must be an array of valid YYYY-MM-DD dates (up to 366).');
-  return [...new Set(value)];
+    key === 'max_debt_paisa' ||
+    key === 'max_additional_orders'
+  ) {
+    return requireInt(value, 'value', { min: 0 });
+  }
+  throw badRequest('Unsupported setting key.');
 }
 
 function presentSetting(row: {

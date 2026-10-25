@@ -1,15 +1,15 @@
-import { PERMISSIONS, ROLES, type Permission } from '@ju/shared';
 import type { Request, Response } from 'express';
 import type { Database } from '../db/pool.js';
 import { currentUser } from '../middleware/auth.js';
-import { updateUser } from '../services/user-admin.service.js';
+import { deleteUser, updateUser } from '../services/user-admin.service.js';
 import { presentUser } from '../views/auth.view.js';
 import {
   listActiveTeachers as listActiveTeacherRows,
   listManagedUsers as listManagedUserRows,
 } from '../models/user.model.js';
 import { badRequest } from '../utils/errors.js';
-import { requireBoolean, requireEnum, requireInt, requireObject } from '../utils/validation.js';
+import { requireBoolean, requireInt, requireObject, requireString, ValidationError } from '../utils/validation.js';
+import { isValidEmail } from '../services/auth.service.js';
 
 export function patchUser(db: Database) {
   return async (req: Request, res: Response): Promise<void> => {
@@ -20,20 +20,35 @@ export function patchUser(db: Database) {
     }
     const userId = requireInt(Number(rawId), 'id', { min: 1 });
     const body = requireObject(req.body ?? {}, 'body');
-    const allowed = new Set(['isActive', 'role', 'permissions']);
+    const allowed = new Set(['isActive', 'fullName', 'email']);
     if (Object.keys(body).some((key) => !allowed.has(key)))
-      throw badRequest('body contains an unsupported field.');
-    const input: Parameters<typeof updateUser>[1] = {
+      throw badRequest('Only isActive, fullName, and email may be changed.');
+
+    let fullName: string | undefined;
+    if (Object.hasOwn(body, 'fullName')) {
+      fullName = requireString(body['fullName'], 'fullName', { minLength: 1, maxLength: 200 }).trim();
+    }
+
+    let email: string | undefined;
+    if (Object.hasOwn(body, 'email')) {
+      const emailStr = requireString(body['email'], 'email', { maxLength: 254 }).trim();
+      if (!isValidEmail(emailStr)) {
+        throw new ValidationError([
+          { field: 'email', issue: 'invalid_format', message: 'email is not a valid address' },
+        ]);
+      }
+      email = emailStr;
+    }
+
+    const input = {
       userId,
       actorId: actor.id,
       actorRole: actor.role,
       ...(Object.hasOwn(body, 'isActive')
         ? { isActive: requireBoolean(body['isActive'], 'isActive') }
         : {}),
-      ...(Object.hasOwn(body, 'role') ? { role: requireEnum(body['role'], 'role', ROLES) } : {}),
-      ...(Object.hasOwn(body, 'permissions')
-        ? { permissions: parsePermissions(body['permissions']) }
-        : {}),
+      ...(fullName !== undefined ? { fullName } : {}),
+      ...(email !== undefined ? { email } : {}),
     };
     const updated = await updateUser(db, input);
     res.status(200).json({
@@ -51,12 +66,21 @@ export function patchUser(db: Database) {
   };
 }
 
-function parsePermissions(value: unknown): Permission[] {
-  if (!Array.isArray(value)) throw badRequest('permissions must be an array.');
-  const permissions = value.map((permission, index) =>
-    requireEnum(permission, `permissions[${index}]`, PERMISSIONS),
-  );
-  return [...new Set(permissions)];
+export function removeUser(db: Database) {
+  return async (req: Request, res: Response): Promise<void> => {
+    const actor = currentUser(req);
+    const rawId = req.params['id'];
+    if (typeof rawId !== 'string' || !/^\d+$/.test(rawId)) {
+      throw badRequest('id must be a positive integer.');
+    }
+    const userId = requireInt(Number(rawId), 'id', { min: 1 });
+    const result = await deleteUser(db, {
+      userId,
+      actorId: actor.id,
+      actorRole: actor.role,
+    });
+    res.status(200).json({ data: result });
+  };
 }
 
 /** GET /api/staff/users — safe, non-secret user directory for authorized managers. */

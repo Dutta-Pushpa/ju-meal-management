@@ -12,8 +12,8 @@ const MAX_PAGE_SIZE = 100;
 export function getBudget(db: Database) {
   return async (req: Request, res: Response): Promise<void> => {
     const actor = currentUser(req);
-    const { teacherId, periodId } = readIds(req, actor.id, actor.role);
-    const summary = await getTeacherBudget(db, teacherId, periodId);
+    const { teacherId, year, month } = readIds(req, actor.id, actor.role);
+    const summary = await getTeacherBudget(db, teacherId, year, month);
     res.status(200).json({ data: presentTeacherBudget(summary) });
   };
 }
@@ -21,10 +21,10 @@ export function getBudget(db: Database) {
 export function getLedger(db: Database) {
   return async (req: Request, res: Response): Promise<void> => {
     const actor = currentUser(req);
-    const { teacherId, periodId } = readIds(req, actor.id, actor.role);
+    const { teacherId, year, month } = readIds(req, actor.id, actor.role);
     const page = readQueryInt(req, 'page', 1, 1, Number.MAX_SAFE_INTEGER);
     const perPage = readQueryInt(req, 'perPage', 20, 1, MAX_PAGE_SIZE);
-    const result = await getTeacherLedger(db, teacherId, periodId, page, perPage);
+    const result = await getTeacherLedger(db, teacherId, year, month, page, perPage);
     res.status(200).json({
       data: result.entries.map(presentTeacherLedgerEntry),
       meta: { total: result.total, page, perPage },
@@ -33,7 +33,8 @@ export function getLedger(db: Database) {
 }
 
 function readIds(req: Request, actorId: number, role: string) {
-  const periodId = readQueryInt(req, 'period', undefined, 1, Number.MAX_SAFE_INTEGER);
+  const year = readQueryInt(req, 'year', new Date().getFullYear(), 1999, 2099);
+  const month = readQueryInt(req, 'month', new Date().getMonth() + 1, 1, 12);
   const requestedTeacher = req.query['teacherId'];
   if (role === 'TEACHER') {
     if (
@@ -42,11 +43,12 @@ function readIds(req: Request, actorId: number, role: string) {
     ) {
       throw forbidden('Teachers may only view their own budget.');
     }
-    return { teacherId: actorId, periodId };
+    return { teacherId: actorId, year, month };
   }
   return {
     teacherId: readQueryInt(req, 'teacherId', undefined, 1, Number.MAX_SAFE_INTEGER),
-    periodId,
+    year,
+    month,
   };
 }
 

@@ -10,7 +10,7 @@ import {
 } from './pages/AdminPages';
 import { StaffOperations, StaffReports } from './pages/StaffPages';
 import { TeacherBudget, TeacherMeals, TeacherOrders, TeacherOverview } from './pages/TeacherPages';
-import { Alert, Button, Field, Input, Mark } from './ui';
+import { Alert, Button, Field, Input, Mark, Select } from './ui';
 
 type ViewId =
   | 'overview'
@@ -103,6 +103,23 @@ export default function App() {
   const [view, setView] = useState<ViewId>('overview');
   const [health, setHealth] = useState<'checking' | 'online' | 'offline'>('checking');
   const [globalNotice, setGlobalNotice] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+
+  // Restore session from localStorage on mount
+  useEffect(() => {
+    const stored = localStorage.getItem('ju_meal_session');
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored) as { token: string; user: User };
+        if (parsed.token && parsed.user) {
+          setToken(parsed.token);
+          setUser(parsed.user);
+        }
+      } catch {
+        /* ignore corrupt session */
+      }
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -137,15 +154,17 @@ export default function App() {
   );
 
   useEffect(() => {
-    if (availableNavigation.length && !availableNavigation.some((item) => item.id === view))
-      setView(availableNavigation[0]!.id);
+    if (availableNavigation.length && !availableNavigation.some((item) => item.id === view)) {
+      const first = availableNavigation[0];
+      if (first) setView(first.id);
+    }
   }, [availableNavigation, view]);
 
-  async function signIn(email: string, password: string) {
+  async function signIn(email: string, password: string, role?: 'TEACHER' | 'STAFF' | 'ADMIN') {
     setGlobalNotice('');
     const response = await api<LoginResponse>('/auth/login', {
       method: 'POST',
-      body: { email, password },
+      body: role ? { email, password, role } : { email, password },
     });
     setToken(response.accessToken);
     setUser(response.user);
@@ -166,6 +185,15 @@ export default function App() {
     setGlobalNotice('You have been signed out.');
   }
 
+  // Persist session to localStorage
+  useEffect(() => {
+    if (token && user) {
+      localStorage.setItem('ju_meal_session', JSON.stringify({ token, user }));
+    } else {
+      localStorage.removeItem('ju_meal_session');
+    }
+  }, [token, user]);
+
   if (!token || !user) {
     return (
       <AuthScreen
@@ -174,6 +202,8 @@ export default function App() {
         onLogin={signIn}
         notice={globalNotice}
         onDismissNotice={() => setGlobalNotice('')}
+        showPassword={showPassword}
+        onTogglePassword={() => setShowPassword((v) => !v)}
       />
     );
   }
@@ -333,20 +363,39 @@ function AuthScreen({
   onLogin,
   notice,
   onDismissNotice,
+  showPassword,
+  onTogglePassword,
 }: {
   mode: 'login' | 'register';
   onModeChange: (mode: 'login' | 'register') => void;
-  onLogin: (email: string, password: string) => Promise<void>;
+  onLogin: (email: string, password: string, role?: 'TEACHER' | 'STAFF' | 'ADMIN') => Promise<void>;
   notice: string;
   onDismissNotice: () => void;
+  showPassword: boolean;
+  onTogglePassword: () => void;
 }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [role, setRole] = useState<'TEACHER' | 'STAFF' | 'ADMIN'>('TEACHER');
+  const [adminKey, setAdminKey] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [busy, setBusy] = useState(false);
+
+  function switchMode(newMode: 'login' | 'register') {
+    setError('');
+    setSuccess('');
+    setPassword('');
+    setConfirmPassword('');
+    setAdminKey('');
+    setEmail('');
+    setFullName('');
+    setRole('TEACHER');
+    onModeChange(newMode);
+  }
+
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError('');
@@ -357,11 +406,18 @@ function AuthScreen({
         if (password !== confirmPassword) throw new Error('Passwords do not match.');
         await api<User>('/auth/register', {
           method: 'POST',
-          body: { fullName: fullName.trim(), email: email.trim(), password, role: 'TEACHER' },
+          body: {
+            fullName: fullName.trim(),
+            email: email.trim(),
+            password,
+            role,
+            adminKey: role === 'ADMIN' ? adminKey.trim() : undefined,
+          },
         });
-        setSuccess('Account created. Sign in with the email and password you registered.');
+        setSuccess('Account created successfully. Please sign in with your email and password.');
         setPassword('');
         setConfirmPassword('');
+        setAdminKey('');
         onModeChange('login');
       } else {
         await onLogin(email.trim(), password);
@@ -451,16 +507,40 @@ function AuthScreen({
           {success && <Alert tone="success">{success}</Alert>}
           <form className="auth-form" onSubmit={(e) => void submit(e)}>
             {mode === 'register' && (
-              <Field label="Full name">
-                <Input
-                  autoComplete="name"
-                  required
-                  maxLength={200}
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  placeholder="Your full name"
-                />
-              </Field>
+              <>
+                <Field label="Full name">
+                  <Input
+                    autoComplete="name"
+                    required
+                    maxLength={200}
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder="Your full name"
+                  />
+                </Field>
+                <Field label="Account Role">
+                  <Select
+                    value={role}
+                    onChange={(e) => setRole(e.target.value as 'TEACHER' | 'STAFF' | 'ADMIN')}
+                  >
+                    <option value="TEACHER">Teacher</option>
+                    <option value="STAFF">Staff (Operations)</option>
+                    <option value="ADMIN">Administrator</option>
+                  </Select>
+                </Field>
+                {role === 'ADMIN' && (
+                  <Field label="Admin Key">
+                    <Input
+                      type={showPassword ? 'text' : 'password'}
+                      autoComplete="off"
+                      required
+                      value={adminKey}
+                      onChange={(e) => setAdminKey(e.target.value)}
+                      placeholder="Shared departmental admin key (e.g. cseju)"
+                    />
+                  </Field>
+                )}
+              </>
             )}
             <Field label="University email">
               <Input
@@ -474,7 +554,7 @@ function AuthScreen({
             </Field>
             <Field label="Password">
               <Input
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                 required
                 minLength={mode === 'register' ? 12 : 1}
@@ -483,11 +563,19 @@ function AuthScreen({
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder={mode === 'register' ? 'At least 12 characters' : 'Enter your password'}
               />
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={onTogglePassword}
+                className="password-toggle"
+              >
+                {showPassword ? 'Hide' : 'Show'}
+              </Button>
             </Field>
             {mode === 'register' && (
               <Field label="Confirm password">
                 <Input
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   autoComplete="new-password"
                   required
                   minLength={12}
@@ -507,26 +595,14 @@ function AuthScreen({
             {mode === 'login' ? (
               <>
                 New to JU Meals?{' '}
-                <button
-                  onClick={() => {
-                    setError('');
-                    setSuccess('');
-                    onModeChange('register');
-                  }}
-                >
-                  Create a teacher account
+                <button type="button" onClick={() => switchMode('register')}>
+                  Create an account
                 </button>
               </>
             ) : (
               <>
                 Already registered?{' '}
-                <button
-                  onClick={() => {
-                    setError('');
-                    setSuccess('');
-                    onModeChange('login');
-                  }}
-                >
+                <button type="button" onClick={() => switchMode('login')}>
                   Sign in
                 </button>
               </>

@@ -6,7 +6,6 @@ import {
   readInt,
   readList,
   readOptionalString,
-  readPattern,
   readString,
 } from '../utils/validation.js';
 
@@ -22,15 +21,25 @@ import {
  */
 
 export const NODE_ENVS = ['development', 'test', 'production'] as const;
-export const LOG_LEVELS = ['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'] as const;
+export const LOG_LEVELS = [
+  'fatal',
+  'error',
+  'warn',
+  'info',
+  'debug',
+  'trace',
+  'silent',
+] as const;
 
 export type NodeEnv = (typeof NODE_ENVS)[number];
 export type LogLevel = (typeof LOG_LEVELS)[number];
 
-const EXAMPLE_SECRET = 'replace-this-with-a-long-random-string-at-least-32-chars';
-const HH_MM = /^([01]\d|2[0-3]):([0-5]\d)$/;
+const EXAMPLE_SECRET =
+  'replace-this-with-a-long-random-string-at-least-32-chars';
 
 export interface AppConfig {
+  ADMIN_KEY?: string;
+
   NODE_ENV: NodeEnv;
   PORT: number;
 
@@ -46,11 +55,6 @@ export interface AppConfig {
 
   BCRYPT_COST: number;
 
-  APP_TIMEZONE: string;
-  ORDER_CUTOFF_TIME: string;
-  BUDGET_ROLLOVER: boolean;
-  DEFAULT_WEEKLY_BUDGET_PAISA: number;
-
   CORS_ORIGIN: string[];
   TRUST_PROXY: boolean;
 
@@ -62,16 +66,9 @@ export interface AppConfig {
   LOG_PRETTY: boolean;
 }
 
-export type LoadConfigResult = { ok: true; config: AppConfig } | { ok: false; issues: string[] };
-
-function isValidTimeZone(tz: string): boolean {
-  try {
-    new Intl.DateTimeFormat('en-US', { timeZone: tz });
-    return true;
-  } catch {
-    return false;
-  }
-}
+export type LoadConfigResult =
+  | { ok: true; config: AppConfig }
+  | { ok: false; issues: string[] };
 
 /**
  * Read one value, recording any problem instead of throwing.
@@ -79,7 +76,7 @@ function isValidTimeZone(tz: string): boolean {
  * The `read` helpers throw, which is correct for a single value but wrong here:
  * a developer fixing configuration wants every mistake in one pass, not the
  * first one followed by a second boot. The thrown ValidationError already
- * carries the variable name, so it is used as-is.
+ * carries the variable name, so it is used as‑is.
  */
 function collect<T>(issues: IssueCollector, read: () => T): T | undefined {
   try {
@@ -96,19 +93,25 @@ function collect<T>(issues: IssueCollector, read: () => T): T | undefined {
 }
 
 /**
- * Parse configuration from a source map. Defaults to `process.env` so the server
- * can load it at startup, but accepts an explicit source so tests can build a
- * known configuration without mutating global state.
+ * Parse configuration from a source map. Defaults to `process.env` so the
+ * server can load it at startup, but accepts an explicit source so tests can
+ * build a known configuration without mutating global state.
  */
-export function loadConfig(source: NodeJS.ProcessEnv = process.env): LoadConfigResult {
+export function loadConfig(
+  source: NodeJS.ProcessEnv = process.env,
+): LoadConfigResult {
   const issues = new IssueCollector();
 
-  const NODE_ENV = collect(issues, () => readEnum(source, 'NODE_ENV', NODE_ENVS, 'development'));
+  const NODE_ENV = collect(issues, () =>
+    readEnum(source, 'NODE_ENV', NODE_ENVS, 'development'),
+  );
   const PORT = collect(issues, () =>
     readInt(source, 'PORT', { min: 1, max: 65_535, default: 4000 }),
   );
 
-  const DATABASE_URL = collect(issues, () => readString(source, 'DATABASE_URL', { minLength: 1 }));
+  const DATABASE_URL = collect(issues, () =>
+    readString(source, 'DATABASE_URL', { minLength: 1 }),
+  );
   const DATABASE_ADMIN_URL = collect(issues, () =>
     readOptionalString(source, 'DATABASE_ADMIN_URL'),
   );
@@ -123,36 +126,27 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): LoadConfigR
   );
   const DB_SSL = collect(issues, () => readBoolean(source, 'DB_SSL', false));
 
-  const JWT_SECRET = collect(issues, () => readString(source, 'JWT_SECRET', { minLength: 32 }));
+  const JWT_SECRET = collect(issues, () =>
+    readString(source, 'JWT_SECRET', { minLength: 32 }),
+  );
   const JWT_EXPIRES_IN_MINUTES = collect(issues, () =>
-    readInt(source, 'JWT_EXPIRES_IN_MINUTES', { min: 1, max: 1440, default: 15 }),
+    readInt(source, 'JWT_EXPIRES_IN_MINUTES', {
+      min: 1,
+      max: 1440,
+      default: 15,
+    }),
   );
 
   const BCRYPT_COST = collect(issues, () =>
     readInt(source, 'BCRYPT_COST', { min: 10, max: 15, default: 12 }),
   );
 
-  const APP_TIMEZONE = collect(issues, () =>
-    readString(source, 'APP_TIMEZONE', { default: 'Asia/Dhaka' }),
-  );
-  const ORDER_CUTOFF_TIME = collect(issues, () =>
-    readPattern(
-      source,
-      'ORDER_CUTOFF_TIME',
-      HH_MM,
-      'ORDER_CUTOFF_TIME must be HH:mm in 24-hour time',
-      '12:00',
-    ),
-  );
-  const BUDGET_ROLLOVER = collect(issues, () => readBoolean(source, 'BUDGET_ROLLOVER', false));
-  const DEFAULT_WEEKLY_BUDGET_PAISA = collect(issues, () =>
-    readInt(source, 'DEFAULT_WEEKLY_BUDGET_PAISA', { min: 0, default: 70_000 }),
-  );
-
   const CORS_ORIGIN = collect(issues, () =>
     readList(source, 'CORS_ORIGIN', ['http://localhost:5173']),
   );
-  const TRUST_PROXY = collect(issues, () => readBoolean(source, 'TRUST_PROXY', false));
+  const TRUST_PROXY = collect(issues, () =>
+    readBoolean(source, 'TRUST_PROXY', false),
+  );
 
   const RATE_LIMIT_WINDOW_MINUTES = collect(issues, () =>
     readInt(source, 'RATE_LIMIT_WINDOW_MINUTES', { min: 1, default: 15 }),
@@ -164,19 +158,15 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): LoadConfigR
     readInt(source, 'LOGIN_RATE_LIMIT_MAX_ATTEMPTS', { min: 1, default: 10 }),
   );
 
-  const LOG_LEVEL = collect(issues, () => readEnum(source, 'LOG_LEVEL', LOG_LEVELS, 'info'));
-  const LOG_PRETTY = collect(issues, () => readBoolean(source, 'LOG_PRETTY', true));
-
-  // Cross-field rules. These can only be checked once the individual values
-  // parsed, and they are the rules that stop a misconfigured deployment rather
-  // than a malformed one.
-  if (APP_TIMEZONE !== undefined && !isValidTimeZone(APP_TIMEZONE)) {
-    issues.add(
-      'APP_TIMEZONE',
-      'invalid_format',
-      `APP_TIMEZONE must be a valid IANA time zone, got "${APP_TIMEZONE}"`,
-    );
-  }
+  const LOG_LEVEL = collect(issues, () =>
+    readEnum(source, 'LOG_LEVEL', LOG_LEVELS, 'info'),
+  );
+  const LOG_PRETTY = collect(issues, () =>
+    readBoolean(source, 'LOG_PRETTY', true),
+  );
+  const ADMIN_KEY = collect(issues, () =>
+    readOptionalString(source, 'ADMIN_KEY'),
+  );
 
   if (NODE_ENV === 'production') {
     if (JWT_SECRET === EXAMPLE_SECRET) {
@@ -194,7 +184,11 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): LoadConfigR
       );
     }
     if (DB_SSL === false) {
-      issues.add('DB_SSL', 'unsafe_in_production', 'DB_SSL must be true in production');
+      issues.add(
+        'DB_SSL',
+        'unsafe_in_production',
+        'DB_SSL must be true in production',
+      );
     }
   }
 
@@ -202,7 +196,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): LoadConfigR
     return { ok: false, issues: issues.describe() };
   }
 
-  // Safe because every value above is defined whenever the collector is empty.
+  // All values are present when there are no issues.
   return {
     ok: true,
     config: {
@@ -217,10 +211,6 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): LoadConfigR
       JWT_SECRET: JWT_SECRET!,
       JWT_EXPIRES_IN_MINUTES: JWT_EXPIRES_IN_MINUTES!,
       BCRYPT_COST: BCRYPT_COST!,
-      APP_TIMEZONE: APP_TIMEZONE!,
-      ORDER_CUTOFF_TIME: ORDER_CUTOFF_TIME!,
-      BUDGET_ROLLOVER: BUDGET_ROLLOVER!,
-      DEFAULT_WEEKLY_BUDGET_PAISA: DEFAULT_WEEKLY_BUDGET_PAISA!,
       CORS_ORIGIN: CORS_ORIGIN!,
       TRUST_PROXY: TRUST_PROXY!,
       RATE_LIMIT_WINDOW_MINUTES: RATE_LIMIT_WINDOW_MINUTES!,
@@ -228,6 +218,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): LoadConfigR
       LOGIN_RATE_LIMIT_MAX_ATTEMPTS: LOGIN_RATE_LIMIT_MAX_ATTEMPTS!,
       LOG_LEVEL: LOG_LEVEL!,
       LOG_PRETTY: LOG_PRETTY!,
+      ...(ADMIN_KEY !== undefined ? { ADMIN_KEY } : {}),
     },
   };
 }
@@ -238,7 +229,9 @@ export function loadConfigOrThrow(source?: NodeJS.ProcessEnv): AppConfig {
 
   if (!result.ok) {
     throw new Error(
-      `Invalid configuration:\n${result.issues.map((issue) => `  - ${issue}`).join('\n')}`,
+      `Invalid configuration:\n${result.issues
+        .map((issue) => `  - ${issue}`)
+        .join('\n')}`,
     );
   }
 

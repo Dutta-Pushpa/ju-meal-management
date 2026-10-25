@@ -3,6 +3,8 @@ import { withTransaction } from '../db/pool.js';
 import { notFound, unprocessable } from '../utils/errors.js';
 import { writeAudit } from '../models/audit.model.js';
 import * as staffOrders from '../models/staff-order.model.js';
+import * as orders from '../models/order.model.js';
+import * as budget from '../models/budget.model.js';
 
 export async function getStaffOrders(
   db: Database,
@@ -113,6 +115,35 @@ export async function changeOrderStatus(
         'The requested order status transition is not allowed.',
       );
     }
+
+    // Debit the teacher's budget exactly once when the order is delivered.
+    // This is the source-of-truth financial event; placement-time debits are
+    // removed and delivery-time debit prevents duplicate charges.
+    if (input.status === 'DELIVERED') {
+      const existingDebit = await orders.findOrderBudgetPeriod(tx, order.id);
+      if (existingDebit === undefined) {
+        const periodId = await orders.findPeriodForDate(tx, order.order_date);
+        if (periodId === undefined) {
+          throw unprocessable(
+            'NOT_FOUND',
+            'No active budget period covers this order date.',
+          );
+        }
+        const orderYear = parseInt(order.order_date.slice(0, 4), 10);
+        const orderMonth = parseInt(order.order_date.slice(5, 7), 10);
+        await budget.insertDebit(tx, {
+          teacherId: order.teacher_id,
+          periodId,
+          orderId: order.id,
+          amountPaisa: order.total_paisa,
+          year: orderYear,
+          month: orderMonth,
+          reason: 'Meal delivery debit',
+          actorUserId: input.actorId,
+        });
+      }
+    }
+
     await staffOrders.setOrderStatus(tx, order.id, input.status);
     await staffOrders.insertStatusEvent(tx, {
       orderId: order.id,

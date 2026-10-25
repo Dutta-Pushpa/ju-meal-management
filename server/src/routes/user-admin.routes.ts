@@ -4,6 +4,7 @@ import {
   listActiveTeachers,
   listManagedUsers,
   patchUser,
+  removeUser,
 } from '../controllers/user-admin.controller.js';
 import { requireAuth, requireRoleWithPermission } from '../middleware/auth.js';
 import type { NextFunction, Request, Response } from 'express';
@@ -16,6 +17,7 @@ export function createUserAdminRouter(deps: { db: Database; jwtSecret: string })
   router.get('/users', auth, canManage, listManagedUsers(deps.db));
   router.get('/teachers', auth, canAccessBudgetTeacherDirectory, listActiveTeachers(deps.db));
   router.patch('/users/:id', auth, canManage, patchUser(deps.db));
+  router.delete('/users/:id', auth, canManage, removeUser(deps.db));
   return router;
 }
 

@@ -23,14 +23,14 @@ export function presentBudgetEntry(entry: BudgetEntryRow) {
 }
 
 export function presentAllocation(result: {
-  allocation: { id: number; teacherId: number; budgetPeriodId: number; amountPaisa: number };
+  allocation: { id: number; teacherId: number; amountPaisa: number };
   ledgerEntry: BudgetEntryRow;
 }) {
   return {
     allocation: {
       id: result.allocation.id,
       teacherId: result.allocation.teacherId,
-      budgetPeriodId: result.allocation.budgetPeriodId,
+      budgetPeriodId: result.ledgerEntry.budget_period_id,
       amount: presentMoney(result.allocation.amountPaisa),
     },
     ledgerEntry: presentBudgetEntry(result.ledgerEntry),

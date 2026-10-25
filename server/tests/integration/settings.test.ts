@@ -21,10 +21,6 @@ const config: AppConfig = {
   JWT_SECRET: 'integration-test-secret-long-enough-32-chars',
   JWT_EXPIRES_IN_MINUTES: 15,
   BCRYPT_COST: 10,
-  APP_TIMEZONE: 'Asia/Dhaka',
-  ORDER_CUTOFF_TIME: '12:00',
-  BUDGET_ROLLOVER: false,
-  DEFAULT_WEEKLY_BUDGET_PAISA: 70_000,
   CORS_ORIGIN: ['http://localhost:5173'],
   TRUST_PROXY: false,
   RATE_LIMIT_WINDOW_MINUTES: 15,
@@ -97,9 +93,9 @@ describe('/api/staff/settings', () => {
     expect(
       (
         await request(app)
-          .patch('/api/staff/settings/order_cutoff_time')
+          .patch('/api/staff/settings/order_placement_deadline')
           .set(auth(teacherToken))
-          .send({ value: '10:30' })
+          .send({ value: "10:30" })
       ).status,
     ).toBe(403);
   });
@@ -108,31 +104,31 @@ describe('/api/staff/settings', () => {
     const list = await request(app).get('/api/staff/settings').set(auth(adminToken));
     expect(list.status).toBe(200);
     const settings = list.body.data as Array<{ key: string; value: string }>;
-    const cutoffTime = settings.find((entry) => entry.key === 'order_cutoff_time');
+    const cutoffTime = settings.find((entry) => entry.key === 'order_placement_deadline');
     expect(cutoffTime).toBeDefined();
-    expect(cutoffTime!.value).toBe('12:00');
+    expect(cutoffTime!.value).toBe("12:30");
 
     const updated = await request(app)
-      .patch('/api/staff/settings/order_cutoff_time')
+      .patch('/api/staff/settings/order_placement_deadline')
       .set(auth(staffToken))
-      .send({ value: '10:30' });
+      .send({ value: "10:30" });
     expect(updated.status).toBe(200);
-    expect(updated.body.data.value).toBe('10:30');
+    expect(updated.body.data.value).toBe("10:30");
     expect(
       (
         await query<{ value: string }>(
-          `SELECT value #>> '{}' AS value FROM app_settings WHERE key = 'order_cutoff_time'`,
+          `SELECT value #>> '{}' AS value FROM app_settings WHERE key = 'order_placement_deadline'`,
         )
       )[0]!.value,
-    ).toBe('10:30');
+    ).toBe("10:30");
     expect(
       await query(
-        `SELECT id FROM audit_logs WHERE action = 'setting.updated' AND metadata->>'key' = 'order_cutoff_time'`,
+        `SELECT id FROM audit_logs WHERE action = 'setting.updated' AND metadata->>'key' = 'order_placement_deadline'`,
       ),
     ).toHaveLength(1);
 
     await request(app)
-      .patch('/api/staff/settings/order_cutoff_time')
+      .patch('/api/staff/settings/order_placement_deadline')
       .set(auth(adminToken))
       .send({ value: '00:00' });
     const today = (
@@ -145,9 +141,9 @@ describe('/api/staff/settings', () => {
     expect(
       (
         await request(app)
-          .patch('/api/staff/settings/order_cutoff_time')
+          .patch('/api/staff/settings/order_placement_deadline')
           .set(auth(adminToken))
-          .send({ value: '25:61' })
+          .send({ value: "25:61" })
       ).status,
     ).toBe(400);
     expect(
