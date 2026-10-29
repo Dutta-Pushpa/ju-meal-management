@@ -60,10 +60,10 @@ describe('seed data', () => {
 
   it('seeds the four Bot Tola shops with the shared Bengali menu', async () => {
     const shops = await query<{ name: string; item_count: string }>(`
-      SELECT l.name, count(m.id)::text AS item_count
+      SELECT l.name_bn AS name, count(m.id)::text AS item_count
       FROM food_locations l
       LEFT JOIN menu_items m ON m.food_location_id = l.id
-      WHERE l.name IN ('রাধুনী', 'রাফি', 'নূরজাহান', 'জ্যাক্স কিচেন')
+      WHERE l.name_bn IN ('রাধুনী', 'রাফি', 'নূরজাহান', 'জ্যাক্স কিচেন')
         AND l.description = 'বটতলা'
       GROUP BY l.id, l.name
       ORDER BY l.id
@@ -112,30 +112,51 @@ describe('seed data', () => {
   });
 
   it('makes every order total agree with the sum of its line items', async () => {
+    // Reconciled orders are the exception: delivery moves total_paisa to the
+    // actual cost, which may differ from the estimated line-item sum.
     const rows = await query<{ mismatches: string }>(`
       WITH sums AS (
-        SELECT o.id, o.total_paisa, SUM(i.line_total_paisa) AS line_sum
+        SELECT o.id, o.total_paisa, o.actual_cost_paisa, SUM(i.line_total_paisa) AS line_sum
         FROM orders o
         JOIN order_items i ON i.order_id = o.id
-        GROUP BY o.id, o.total_paisa
+        GROUP BY o.id, o.total_paisa, o.actual_cost_paisa
       )
       SELECT count(*)::text AS mismatches
       FROM sums
       WHERE line_sum <> total_paisa
+        AND (actual_cost_paisa IS NULL OR actual_cost_paisa <> total_paisa)
     `);
 
     expect(Number(rows[0]?.mismatches)).toBe(0);
   });
 
-  it('leaves no teacher with a negative balance', async () => {
-    const rows = await query<{ negatives: string }>(`
-      SELECT count(*)::text AS negatives
-      FROM (SELECT teacher_id, SUM(amount_paisa) AS balance
-            FROM budget_ledger GROUP BY teacher_id) t
-      WHERE balance < 0
-    `);
+  it('keeps every teacher inside the configured debt policy', async () => {
+    const settings = await query<{ key: string; value: unknown }>(
+      `SELECT key, value FROM app_settings
+        WHERE key IN ('negative_balance_allowed', 'max_debt_paisa')`,
+    );
+    const map = new Map(settings.map((row) => [row.key, row.value]));
+    const negativeAllowed =
+      map.get('negative_balance_allowed') === true ||
+      map.get('negative_balance_allowed') === 'true';
+    const maxDebtPaisa = Number(map.get('max_debt_paisa') ?? 0);
 
-    expect(Number(rows[0]?.negatives)).toBe(0);
+    const negatives = await query<{ teacher_id: number; balance: string }>(
+      `SELECT teacher_id, SUM(amount_paisa)::text AS balance
+         FROM budget_ledger GROUP BY teacher_id
+        HAVING SUM(amount_paisa) < 0`,
+    );
+
+    if (!negativeAllowed) {
+      // Debt disabled: nobody may be negative at all.
+      expect(negatives).toEqual([]);
+      return;
+    }
+
+    // Debt enabled: overdraws are allowed up to the configured cap.
+    for (const row of negatives) {
+      expect(Number(row.balance)).toBeGreaterThanOrEqual(-maxDebtPaisa);
+    }
   });
 
   it('mirrors every allocation with a matching ledger entry', async () => {

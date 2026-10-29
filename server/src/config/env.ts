@@ -133,7 +133,7 @@ export function loadConfig(
     readInt(source, 'JWT_EXPIRES_IN_MINUTES', {
       min: 1,
       max: 1440,
-      default: 15,
+      default: 720,
     }),
   );
 

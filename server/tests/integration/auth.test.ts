@@ -611,12 +611,12 @@ function jwtDecode(token: string): {
 }
 
 describe('POST /api/auth/register in production', () => {
-  it('requires authorized staff and keeps staff creation limited to teacher accounts', async () => {
+  it('is admin-only when self-registration is off', async () => {
     const { hashPassword } = await import('../../src/utils/password.js');
     await query(
       `INSERT INTO users (full_name, email, password_hash, role, permissions)
        VALUES ('Registration Admin', 'registration-admin@juniv.edu', $1, 'ADMIN', '[]'::jsonb),
-              ('Registration Staff', 'registration-staff@juniv.edu', $1, 'STAFF', '["users:create"]'::jsonb)`,
+              ('Registration Staff', 'registration-staff@juniv.edu', $1, 'STAFF', '[]'::jsonb)`,
       [await hashPassword('RegistrationPass123!', TEST_BCRYPT_COST)],
     );
     const productionApp = createApp({
@@ -637,7 +637,7 @@ describe('POST /api/auth/register in production', () => {
       password: 'RegistrationPass123!',
     });
     const staffToken = staffLogin.body.data.accessToken as string;
-    const createdTeacher = await request(productionApp)
+    const staffAttempt = await request(productionApp)
       .post('/api/auth/register')
       .set('Authorization', `Bearer ${staffToken}`)
       .send({
@@ -646,17 +646,7 @@ describe('POST /api/auth/register in production', () => {
         password: 'NewPassword123!',
         role: 'TEACHER',
       });
-    expect(createdTeacher.status).toBe(201);
-    const elevated = await request(productionApp)
-      .post('/api/auth/register')
-      .set('Authorization', `Bearer ${staffToken}`)
-      .send({
-        fullName: 'Created Admin',
-        email: 'created-admin@juniv.edu',
-        password: 'NewPassword123!',
-        role: 'ADMIN',
-      });
-    expect(elevated.status).toBe(400);
+    expect(staffAttempt.status).toBe(403);
 
     const adminLogin = await request(productionApp).post('/api/auth/login').send({
       email: 'registration-admin@juniv.edu',

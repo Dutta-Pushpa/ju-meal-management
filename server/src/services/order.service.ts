@@ -37,8 +37,9 @@ export async function placeOrder(db: Database, input: PlaceOrderInput) {
         throw unprocessable('ORDERING_CLOSED', 'The ordering cutoff for this date has passed.');
       }
 
+      // Monthly budgets do not require a legacy budget period; the debit is
+      // booked to the order's Dhaka month (year/month) in the ledger.
       const periodId = await orders.findPeriodForDate(tx, input.orderDate);
-      if (periodId === undefined) throw notFound('No active budget period covers this order date.');
 
       const itemIds = [...new Set(input.items.map((item) => item.menuItemId))];
       const pricedItems = await orders.findPricedItems(tx, itemIds);
@@ -72,27 +73,30 @@ export async function placeOrder(db: Database, input: PlaceOrderInput) {
       const available = await orders.getAvailableBalance(
         tx,
         input.teacherId,
-        periodId,
         orderYear,
         orderMonth,
       );
 
       const debtPolicy = await orders.getDebtPolicy(tx);
+      // A teacher's approved debt-allowance requests add extra headroom on top
+      // of the global maximum debt.
+      const teacherAllowance = await orders.getTeacherDebtAllowance(tx, input.teacherId);
+      const effectiveMaxDebt = debtPolicy.maxDebtPaisa + teacherAllowance;
 
       if (totalPaisa > available) {
         if (!debtPolicy.negativeBalanceAllowed) {
           throw unprocessable('BUDGET_INSUFFICIENT', 'Order total exceeds the available balance.');
         }
         const resultingDebt = totalPaisa - available;
-        if (debtPolicy.maxDebtPaisa > 0 && resultingDebt > debtPolicy.maxDebtPaisa) {
+        if (effectiveMaxDebt > 0 && resultingDebt > effectiveMaxDebt) {
           throw unprocessable(
             'BUDGET_INSUFFICIENT',
-            `Order total exceeds the permitted maximum debt limit of ৳${(debtPolicy.maxDebtPaisa / 100).toFixed(2)}.`,
+            `Order total exceeds the permitted maximum debt limit of ৳${(effectiveMaxDebt / 100).toFixed(2)}.`,
           );
         }
         if (debtPolicy.maxAdditionalOrders > 0) {
-          const currentNegativeOrders = await orders.countNegativeOrders(tx, input.teacherId);
-          if (currentNegativeOrders >= debtPolicy.maxAdditionalOrders) {
+          const currentDebtOrders = await orders.countDebtOrders(tx, input.teacherId);
+          if (currentDebtOrders >= debtPolicy.maxAdditionalOrders) {
             throw unprocessable(
               'BUDGET_INSUFFICIENT',
               `Permitted additional order limit (${debtPolicy.maxAdditionalOrders}) exceeded.`,
@@ -194,13 +198,17 @@ export async function cancelOrder(
       }
     }
 
-    const periodId = await orders.findOrderBudgetPeriod(tx, input.orderId);
-    if (periodId === undefined) throw internal('Order debit record is missing.');
+    // The refund returns the money to the month the debit was recorded in, so
+    // monthly balances (and any carried-forward overdraft) stay consistent.
+    const debit = await orders.findOrderDebitRecord(tx, input.orderId);
+    if (debit === undefined) throw internal('Order debit record is missing.');
     const reason = input.reason ?? 'Cancelled by teacher before cutoff';
     await orders.cancelOrder(tx, input.orderId);
     await orders.insertRefund(tx, {
       teacherId: order.teacher_id,
-      periodId,
+      periodId: debit.budget_period_id ?? undefined,
+      year: debit.year ?? undefined,
+      month: debit.month ?? undefined,
       orderId: order.id,
       amountPaisa: order.total_paisa,
       reason,

@@ -25,6 +25,7 @@ erDiagram
     users ||--o{ budget_ledger : "owns"
     users ||--o{ orders : places
     users ||--o{ sessions : holds
+    users ||--o{ budget_requests : submits
     budget_periods ||--o{ budget_allocations : "allocated in"
     budget_periods ||--o{ budget_ledger : "booked in"
     budget_ledger }o--o| orders : references
@@ -42,7 +43,8 @@ erDiagram
         text password_hash
         text role
         text designation "nullable"
-        text permissions "JSON array, empty for TEACHER"
+        text permissions "legacy, always empty"
+        bigint debt_allowance_paisa "extra personal debt headroom"
         boolean is_active
         integer token_version
         timestamptz created_at
@@ -146,7 +148,8 @@ Every teacher, staff member, and administrator.
 | `password_hash`             | `text`        | bcrypt hash, always with the `$2b$` prefix. Plaintext is never stored or logged |
 | `role`                      | `text`        | `TEACHER`, `STAFF`, or `ADMIN`, enforced by a `CHECK` constraint                |
 | `designation`               | `text`        | Academic or staff designation (e.g. Professor, Lecturer). Nullable              |
-| `permissions`               | `jsonb`       | Array of granted permission strings. Always `[]` for `TEACHER`                  |
+| `permissions`               | `jsonb`       | Legacy column, always `[]`. Access is purely role-based; kept only so old data retains meaning |
+| `debt_allowance_paisa`      | `bigint`      | Extra debt headroom granted on top of the global `max_debt_paisa` policy, typically via an approved budget request. Defaults to `0` |
 | `is_active`                 | `boolean`     | A deactivated user cannot log in and their tokens stop working                  |
 | `token_version`             | `integer`     | Embedded in every JWT. Incrementing it revokes all of that user's tokens        |
 | `created_at` / `updated_at` | `timestamptz` |                                                                                 |
@@ -260,6 +263,28 @@ There is deliberately **no stored balance column**. A mutable balance can drift
 from the ledger through a single missed write; a `SUM` cannot. The ledger is
 append-only and rows are never updated or deleted.
 
+### `budget_requests`
+
+Teacher requests for additional budget or extra personal debt allowance,
+approved or rejected by an administrator.
+
+| Column          | Type          | Notes                                                                       |
+| --------------- | ------------- | --------------------------------------------------------------------------- |
+| `id`            | `bigserial`   | Primary key                                                                 |
+| `teacher_id`    | `bigint`      | Foreign key to `users`                                                      |
+| `request_type`  | `text`        | `budget_increase` (adds to the current month's budget) or `debt_allowance` (raises `users.debt_allowance_paisa`) |
+| `amount_paisa`  | `bigint`      | Positive, enforced by a `CHECK` constraint                                  |
+| `reason`        | `text`        | Why the teacher needs it                                                    |
+| `status`        | `text`        | `pending`, `approved`, or `rejected`                                        |
+| `decided_by`    | `bigint`      | Nullable foreign key to `users`, the deciding administrator                  |
+| `decided_at`    | `timestamptz` | Nullable                                                                     |
+| `created_at`    | `timestamptz` |                                                                              |
+
+Approving a `budget_increase` writes a positive `adjustment` ledger entry for
+the teacher's current Dhaka month. Approving a `debt_allowance` increments the
+teacher's `debt_allowance_paisa`, which the order-placement debt check adds on
+top of the global `max_debt_paisa` policy.
+
 ### `orders`
 
 | Column                      | Type          | Notes                                              |
@@ -269,8 +294,12 @@ append-only and rows are never updated or deleted.
 | `food_location_id`          | `bigint`      | Foreign key. One location per order, per policy P2 |
 | `order_date`                | `date`        | The `Asia/Dhaka` business date                     |
 | `status`                    | `text`        | `CONFIRMED`, `COLLECTED`, `DELIVERED`, `CANCELLED` |
-| `total_paisa`               | `bigint`      | Server-calculated                                  |
+| `total_paisa`               | `bigint`      | Server-calculated; updated to the actual cost when a delivery is reconciled |
 | `idempotency_key`           | `text`        | Nullable                                           |
+| `alternative_item_name`     | `text`        | Nullable. The fallback dish the teacher declared, or what staff actually served |
+| `alternative_unit_price_paisa` | `bigint`   | Nullable. Declared unit price of the alternative dish              |
+| `actual_cost_paisa`         | `bigint`      | Nullable. Actual delivered cost, set when delivery is reconciled    |
+| `delivery_confirmed_at` / `delivery_confirmed_by` | | Nullable. Set when the order is marked delivered |
 | `confirmed_at`              | `timestamptz` |                                                    |
 | `cancelled_at`              | `timestamptz` | Nullable                                           |
 | `created_at` / `updated_at` | `timestamptz` |                                                    |
@@ -343,7 +372,7 @@ Configuration that staff may change without a deployment.
 | `updated_at`  | `timestamptz` |                                 |
 
 Seeded keys: `order_cutoff_time` (default `12:00`), `budget_rollover` (default
-`false`), `timezone` (default `Asia/Dhaka`), `ordering_disabled_dates`.
+`false`), `timezone` (default `Asia/Dhaka`).
 When rollover is enabled, creating a period credits each active teacher's
 positive remaining balance from the immediately preceding period as a signed
 `adjustment` ledger entry in the new period. Period creation and rollover credits

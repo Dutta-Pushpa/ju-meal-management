@@ -101,6 +101,8 @@ export async function changeOrderStatus(
     status: 'COLLECTED' | 'DELIVERED';
     actorId: number;
     note: string | null;
+    actualCostPaisa?: number | undefined;
+    alternativeItemName?: string | undefined;
   },
 ) {
   return withTransaction(db, async (tx) => {
@@ -123,25 +125,58 @@ export async function changeOrderStatus(
       const existingDebit = await orders.findOrderBudgetPeriod(tx, order.id);
       if (existingDebit === undefined) {
         const periodId = await orders.findPeriodForDate(tx, order.order_date);
-        if (periodId === undefined) {
-          throw unprocessable(
-            'NOT_FOUND',
-            'No active budget period covers this order date.',
-          );
-        }
         const orderYear = parseInt(order.order_date.slice(0, 4), 10);
         const orderMonth = parseInt(order.order_date.slice(5, 7), 10);
+        // periodId is optional under the monthly budget model: the debit is
+        // booked to the order's Dhaka month (year/month) in the ledger.
         await budget.insertDebit(tx, {
           teacherId: order.teacher_id,
-          periodId,
+          periodId: periodId ?? undefined,
           orderId: order.id,
-          amountPaisa: order.total_paisa,
+          amountPaisa: -order.total_paisa,
           year: orderYear,
           month: orderMonth,
           reason: 'Meal delivery debit',
           actorUserId: input.actorId,
         });
       }
+
+      // Reconcile the billed amount with the actual cost of what was
+      // delivered (decision B: hold at placement, settle at delivery). The
+      // estimated total was already debited at placement; a costlier delivery
+      // debits the difference, a cheaper one refunds it.
+      const actualCost = input.actualCostPaisa ?? order.total_paisa;
+      if (actualCost !== order.total_paisa) {
+        const orderYear = parseInt(order.order_date.slice(0, 4), 10);
+        const orderMonth = parseInt(order.order_date.slice(5, 7), 10);
+        const difference = actualCost - order.total_paisa;
+        if (difference > 0) {
+          await budget.insertDebit(tx, {
+            teacherId: order.teacher_id,
+            orderId: order.id,
+            amountPaisa: -difference,
+            year: orderYear,
+            month: orderMonth,
+            reason: 'Actual cost reconciliation (delivery)',
+            actorUserId: input.actorId,
+          });
+        } else {
+          await orders.insertRefund(tx, {
+            teacherId: order.teacher_id,
+            orderId: order.id,
+            amountPaisa: -difference,
+            year: orderYear,
+            month: orderMonth,
+            reason: 'Actual cost reconciliation (delivery)',
+            actorId: input.actorId,
+          });
+        }
+      }
+      await staffOrders.setOrderDelivered(tx, order.id, {
+        actualCostPaisa: actualCost,
+        alternativeItemName: input.alternativeItemName ?? undefined,
+        actorId: input.actorId,
+      });
     }
 
     await staffOrders.setOrderStatus(tx, order.id, input.status);
@@ -157,7 +192,17 @@ export async function changeOrderStatus(
       action: 'order.status.changed',
       entityType: 'order',
       entityId: order.id,
-      metadata: { oldStatus: order.status, newStatus: input.status, note: input.note },
+      metadata: {
+        oldStatus: order.status,
+        newStatus: input.status,
+        note: input.note,
+        ...(input.status === 'DELIVERED'
+          ? {
+              actualCostPaisa: input.actualCostPaisa ?? null,
+              alternativeItemName: input.alternativeItemName ?? null,
+            }
+          : {}),
+      },
     });
     return { oldStatus: order.status, status: input.status };
   });

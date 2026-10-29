@@ -12,7 +12,9 @@ export interface BudgetPeriodRow {
 export interface BudgetEntryRow {
   id: number;
   teacher_id: number;
-  budget_period_id: number;
+  budget_period_id?: number | null;
+  year?: number | null;
+  month?: number | null;
   entry_type: 'allocation' | 'debit' | 'refund' | 'adjustment';
   amount_paisa: number;
   order_id?: number | null;
@@ -57,16 +59,34 @@ export interface BudgetSummaryRow {
   available_paisa: number;
 }
 
-export interface MonthlyBudgetSummaryRow {
+export interface TeacherMonthlyBalanceRow {
+  teacher_id: number;
+  teacher_name: string;
+  email: string;
+  has_allocation: boolean;
+  /** Base allocation stored in budget_monthly_allocations for the month. */
+  allocated_paisa: number;
+  /** Net admin adjustments recorded on the ledger for the month (may be ±). */
+  adjusted_paisa: number;
+  /**
+   * Budget carried into this month from all previous months: base allocations
+   * of prior months plus non-allocation ledger activity (debits, refunds,
+   * adjustments). Unused budget rolls forward and overdrafts roll forward too.
+   */
+  carry_forward_paisa: number;
+  /** Confirmed order debits in this month (positive). */
+  spent_paisa: number;
+  /** Cancellation refunds in this month (positive). */
+  refunded_paisa: number;
+  /** allocated + adjusted + carry_forward - spent + refunded. May be negative. */
+  available_paisa: number;
+}
+
+export interface MonthlyBudgetSummaryRow extends TeacherMonthlyBalanceRow {
   period_id: number;
   period_name: string;
   starts_on: string;
   ends_on: string;
-  allocated_paisa: number;
-  spent_paisa: number;
-  refunded_paisa: number;
-  adjusted_paisa: number;
-  available_paisa: number;
   allocated_paisa_raw: number;
   carried_forward_paisa: number;
 }
@@ -170,24 +190,180 @@ export async function findMonthlyAllocationSummary(
   year: number,
   month: number,
 ): Promise<MonthlyBudgetSummaryRow | undefined> {
-  const { rows } = await db.query<MonthlyBudgetSummaryRow>(
-    `SELECT COALESCE(SUM(CASE WHEN l.entry_type = 'allocation' THEN l.amount_paisa ELSE 0 END), 0)::bigint AS allocated_paisa,
-            -COALESCE(SUM(CASE WHEN l.entry_type = 'debit' THEN l.amount_paisa ELSE 0 END), 0)::bigint AS spent_paisa,
-            COALESCE(SUM(CASE WHEN l.entry_type = 'refund' THEN l.amount_paisa ELSE 0 END), 0)::bigint AS refunded_paisa,
-            COALESCE(SUM(CASE WHEN l.entry_type = 'adjustment' THEN l.amount_paisa ELSE 0 END), 0)::bigint AS adjusted_paisa,
-            COALESCE(SUM(l.amount_paisa), 0)::bigint AS available_paisa,
-            COALESCE(ma.allocated_paisa, 0)::bigint AS allocated_paisa_raw,
-            COALESCE(ma.carried_forward_paisa, 0)::bigint AS carried_forward_paisa
-       FROM budget_monthly_allocations ma
-       LEFT JOIN budget_ledger l
-         ON l.teacher_id = ma.teacher_id
-        AND l.year = ma.year
-        AND l.month = ma.month
-      WHERE ma.teacher_id = $1 AND ma.year = $2 AND ma.month = $3
-      GROUP BY ma.id`,
-    [teacherId, year, month],
+  const balance = await findTeacherMonthlyBalance(db, teacherId, year, month);
+  if (!balance) return undefined;
+  return {
+    ...balance,
+    // Legacy/compatibility fields retained while callers migrate off periods.
+    period_id: year * 100 + month,
+    period_name: `${year}-${String(month).padStart(2, '0')}`,
+    starts_on: `${year}-${String(month).padStart(2, '0')}-01`,
+    ends_on: `${year}-${String(month).padStart(2, '0')}-31`,
+    allocated_paisa_raw: balance.allocated_paisa,
+    carried_forward_paisa: balance.carry_forward_paisa,
+  };
+}
+
+const MONTHLY_BALANCE_SELECT = `
+  WITH cur AS (
+    SELECT l.teacher_id,
+           SUM(l.amount_paisa) FILTER (WHERE l.entry_type = 'debit') AS debit_paisa,
+           SUM(l.amount_paisa) FILTER (WHERE l.entry_type = 'refund') AS refund_paisa,
+           SUM(l.amount_paisa) FILTER (WHERE l.entry_type = 'adjustment') AS adjustment_paisa
+      FROM budget_ledger l
+     WHERE l.year = $1 AND l.month = $2 AND l.entry_type <> 'allocation'
+     GROUP BY l.teacher_id
+  ),
+  prior_ledger AS (
+    SELECT l.teacher_id, SUM(l.amount_paisa) AS carry_paisa
+      FROM budget_ledger l
+     WHERE l.year IS NOT NULL AND l.month IS NOT NULL
+       AND (l.year < $1 OR (l.year = $1 AND l.month < $2))
+       AND l.entry_type <> 'allocation'
+     GROUP BY l.teacher_id
+  ),
+  prior_alloc AS (
+    SELECT a.teacher_id, SUM(a.allocated_paisa) AS carry_paisa
+      FROM budget_monthly_allocations a
+     WHERE a.year < $1 OR (a.year = $1 AND a.month < $2)
+     GROUP BY a.teacher_id
+  )
+  SELECT u.id AS teacher_id,
+         u.full_name AS teacher_name,
+         u.email,
+         (ma.id IS NOT NULL) AS has_allocation,
+         COALESCE(ma.allocated_paisa, 0)::bigint AS allocated_paisa,
+         COALESCE(c.adjustment_paisa, 0)::bigint AS adjusted_paisa,
+         (COALESCE(pl.carry_paisa, 0) + COALESCE(pa.carry_paisa, 0))::bigint AS carry_forward_paisa,
+         -COALESCE(c.debit_paisa, 0)::bigint AS spent_paisa,
+         COALESCE(c.refund_paisa, 0)::bigint AS refunded_paisa,
+         (COALESCE(ma.allocated_paisa, 0)
+          + COALESCE(c.adjustment_paisa, 0)
+          + COALESCE(c.debit_paisa, 0)
+          + COALESCE(c.refund_paisa, 0)
+          + COALESCE(pl.carry_paisa, 0)
+          + COALESCE(pa.carry_paisa, 0))::bigint AS available_paisa
+    FROM users u
+    LEFT JOIN budget_monthly_allocations ma
+           ON ma.teacher_id = u.id AND ma.year = $1 AND ma.month = $2
+    LEFT JOIN cur c ON c.teacher_id = u.id
+    LEFT JOIN prior_ledger pl ON pl.teacher_id = u.id
+    LEFT JOIN prior_alloc pa ON pa.teacher_id = u.id
+`;
+
+export async function findMonthlyTeacherBalances(
+  db: Queryable,
+  year: number,
+  month: number,
+): Promise<TeacherMonthlyBalanceRow[]> {
+  const { rows } = await db.query<TeacherMonthlyBalanceRow>(
+    `${MONTHLY_BALANCE_SELECT}
+      WHERE u.role = 'TEACHER' AND u.is_active
+      ORDER BY u.full_name, u.id`,
+    [year, month],
+  );
+  return rows;
+}
+
+export async function findTeacherMonthlyBalance(
+  db: Queryable,
+  teacherId: number,
+  year: number,
+  month: number,
+): Promise<TeacherMonthlyBalanceRow | undefined> {
+  const { rows } = await db.query<TeacherMonthlyBalanceRow>(
+    `${MONTHLY_BALANCE_SELECT}
+      WHERE u.id = $3`,
+    [year, month, teacherId],
   );
   return rows[0];
+}
+
+export interface SixMonthAllocationRow {
+  teacher_id: number;
+  teacher_name: string;
+  year: number;
+  month: number;
+  allocated_paisa: number;
+}
+
+/** Effective allocation per teacher per month (base allocation plus any
+ * adjustments recorded for that month) inside a year/month window. */
+export async function listMonthlyAllocationsWindow(
+  db: Queryable,
+  startYearMonth: number,
+  endYearMonth: number,
+): Promise<SixMonthAllocationRow[]> {
+  const { rows } = await db.query<SixMonthAllocationRow>(
+    `SELECT ma.teacher_id, u.full_name AS teacher_name, ma.year, ma.month,
+            (ma.allocated_paisa + COALESCE(adj.total_paisa, 0))::bigint AS allocated_paisa
+       FROM budget_monthly_allocations ma
+       JOIN users u ON u.id = ma.teacher_id AND u.is_active
+       LEFT JOIN (
+         SELECT l.teacher_id, l.year, l.month, SUM(l.amount_paisa) AS total_paisa
+           FROM budget_ledger l
+          WHERE l.entry_type = 'adjustment'
+          GROUP BY l.teacher_id, l.year, l.month
+       ) adj ON adj.teacher_id = ma.teacher_id AND adj.year = ma.year AND adj.month = ma.month
+      WHERE (ma.year * 100 + ma.month) BETWEEN $1 AND $2
+        AND u.role = 'TEACHER'
+      ORDER BY (ma.year * 100 + ma.month), u.full_name, u.id`,
+    [startYearMonth, endYearMonth],
+  );
+  return rows;
+}
+
+export interface MonthTransactionRow {
+  id: number;
+  teacher_id: number;
+  teacher_name: string;
+  order_date: string;
+  total_paisa: number;
+  status: string;
+}
+
+/** Successful (non-cancelled) orders placed within the budget month. */
+export async function countMonthTransactions(
+  db: Queryable,
+  year: number,
+  month: number,
+  teacherId: number | undefined,
+): Promise<number> {
+  const { rows } = await db.query<{ total: number }>(
+    `SELECT count(*)::int AS total
+       FROM orders o
+      WHERE o.status <> 'CANCELLED'
+        AND o.order_date >= make_date($2, $3, 1)
+        AND o.order_date < make_date($2, $3, 1) + INTERVAL '1 month'
+        AND ($1::bigint IS NULL OR o.teacher_id = $1)`,
+    [teacherId ?? null, year, month],
+  );
+  return rows[0]!.total;
+}
+
+export async function listMonthTransactions(
+  db: Queryable,
+  year: number,
+  month: number,
+  teacherId: number | undefined,
+  limit: number,
+  offset: number,
+): Promise<MonthTransactionRow[]> {
+  const { rows } = await db.query<MonthTransactionRow>(
+    `SELECT o.id, o.teacher_id, u.full_name AS teacher_name,
+            to_char(o.order_date, 'YYYY-MM-DD') AS order_date,
+            o.total_paisa, o.status
+       FROM orders o
+       JOIN users u ON u.id = o.teacher_id
+      WHERE o.status <> 'CANCELLED'
+        AND o.order_date >= make_date($2, $3, 1)
+        AND o.order_date < make_date($2, $3, 1) + INTERVAL '1 month'
+        AND ($1::bigint IS NULL OR o.teacher_id = $1)
+      ORDER BY o.order_date DESC, o.id DESC
+      LIMIT $4 OFFSET $5`,
+    [teacherId ?? null, year, month, limit, offset],
+  );
+  return rows;
 }
 
 export async function insertMonthlyAllocation(
@@ -210,7 +386,7 @@ export async function insertMonthlyAllocation(
     `INSERT INTO budget_ledger
         (teacher_id, year, month, entry_type, amount_paisa, reason, created_by)
       VALUES ($1, $2, $3, 'allocation', $4, $5, $6)
-      RETURNING id, teacher_id, year, month, amount_paisa, reason, created_by, created_at`,
+      RETURNING id, teacher_id, budget_period_id, year, month, entry_type, amount_paisa, order_id, reason, created_by, created_at`,
     [input.teacherId, input.year, input.month, input.amountPaisa, input.reason, input.actorUserId],
   );
   return { allocationId: allocation.rows[0]!.id, entry: rows[0]! };
@@ -222,7 +398,7 @@ export async function insertDebit(
   db: Queryable,
   input: {
     teacherId: number;
-    periodId: number;
+    periodId?: number | undefined;
     orderId: number;
     amountPaisa: number;
     year: number;
@@ -238,7 +414,7 @@ export async function insertDebit(
      RETURNING id, teacher_id, budget_period_id, year, month, entry_type, amount_paisa, order_id, reason, created_by, created_at`,
     [
       input.teacherId,
-      input.periodId,
+      input.periodId ?? null,
       input.year,
       input.month,
       input.amountPaisa,
@@ -323,7 +499,8 @@ export async function insertAdjustment(
   db: Queryable,
   input: {
     teacherId: number;
-    periodId: number;
+    year: number;
+    month: number;
     amountPaisa: number;
     actorUserId: number;
     reason: string;
@@ -331,10 +508,17 @@ export async function insertAdjustment(
 ): Promise<BudgetEntryRow> {
   const { rows } = await db.query<BudgetEntryRow>(
     `INSERT INTO budget_ledger
-       (teacher_id, budget_period_id, entry_type, amount_paisa, reason, created_by)
-     VALUES ($1, $2, 'adjustment', $3, $4, $5)
-     RETURNING id, teacher_id, budget_period_id, entry_type, amount_paisa, reason, created_by, created_at`,
-    [input.teacherId, input.periodId, input.amountPaisa, input.reason, input.actorUserId],
+       (teacher_id, year, month, entry_type, amount_paisa, reason, created_by)
+     VALUES ($1, $2, $3, 'adjustment', $4, $5, $6)
+     RETURNING id, teacher_id, budget_period_id, year, month, entry_type, amount_paisa, reason, created_by, created_at`,
+    [
+      input.teacherId,
+      input.year,
+      input.month,
+      input.amountPaisa,
+      input.reason,
+      input.actorUserId,
+    ],
   );
   return rows[0]!;
 }

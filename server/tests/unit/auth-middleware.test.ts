@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Request, Response } from 'express';
-import {
-  currentUser,
-  requirePermission,
-  requireRole,
-  requireRoleWithPermission,
-} from '../../src/middleware/auth.js';
+import { currentUser, requireRole } from '../../src/middleware/auth.js';
 import type { AuthUser } from '../../src/services/auth.service.js';
 
 /**
@@ -37,14 +32,6 @@ const collector: AuthUser = {
   fullName: 'Demo Staff',
   email: 'staff@juniv.edu',
   role: 'STAFF',
-  permissions: ['orders:manage_status'],
-};
-
-const admin: AuthUser = {
-  id: 3,
-  fullName: 'Admin',
-  email: 'admin@juniv.edu',
-  role: 'ADMIN',
   permissions: [],
 };
 
@@ -80,66 +67,10 @@ describe('requireRole', () => {
     expect(err.status).toBe(401);
     expect(err.code).toBe('UNAUTHORIZED');
   });
-});
 
-describe('requirePermission', () => {
-  it('allows a staff account holding the permission', async () => {
-    const err = await run(requirePermission('orders:manage_status'), stubReq(collector));
-    expect(err).toBeUndefined();
-  });
-
-  it('refuses a staff account without the permission', async () => {
-    const noPerms: AuthUser = { ...collector, permissions: [] };
-    const err = (await run(requirePermission('budgets:allocate'), stubReq(noPerms))) as {
-      status: number;
-      code: string;
-      message: string;
-    };
-    expect(err.status).toBe(403);
-    expect(err.code).toBe('FORBIDDEN');
-    // The missing permission name is not echoed, so callers cannot map the model.
-    expect(err.message).not.toContain('budgets:allocate');
-  });
-
-  it('refuses a teacher even when they hold no permissions', async () => {
-    const err = (await run(requirePermission('orders:manage_status'), stubReq(teacher))) as {
-      status: number;
-    };
-    expect(err.status).toBe(403);
-  });
-});
-
-describe('requireRoleWithPermission', () => {
-  it('allows staff with the permission', async () => {
-    const err = await run(
-      requireRoleWithPermission(['STAFF'], 'orders:manage_status'),
-      stubReq(collector),
-    );
-    expect(err).toBeUndefined();
-  });
-
-  it('refuses staff without the permission', async () => {
-    const err = (await run(
-      requireRoleWithPermission(['STAFF'], 'budgets:allocate'),
-      stubReq(collector),
-    )) as { status: number };
-    expect(err.status).toBe(403);
-  });
-
-  it('refuses a teacher even with a matching permission list', async () => {
-    const teacherWithPerms: AuthUser = {
-      ...teacher,
-      permissions: ['orders:manage_status'],
-    };
-    const err = (await run(
-      requireRoleWithPermission(['STAFF'], 'orders:manage_status'),
-      stubReq(teacherWithPerms),
-    )) as { status: number };
-    expect(err.status).toBe(403);
-  });
-
-  it('lets ADMIN through without holding the permission', async () => {
-    const err = await run(requireRoleWithPermission(['STAFF'], 'budgets:allocate'), stubReq(admin));
+  it('grants access by role alone — stored permissions are irrelevant', async () => {
+    const staffWithPerms: AuthUser = { ...collector, permissions: ['budgets:allocate'] };
+    const err = await run(requireRole('STAFF', 'ADMIN'), stubReq(staffWithPerms));
     expect(err).toBeUndefined();
   });
 });

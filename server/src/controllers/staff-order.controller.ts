@@ -74,11 +74,28 @@ export function patchStaffOrderStatus(deps: { db: Database; config: AppConfig })
     if (status === 'CONFIRMED') {
       throw unprocessable('INVALID_STATUS_TRANSITION', 'Orders cannot be moved back to confirmed.');
     }
+    // Delivery may reconcile the billed cost: the staff member can enter the
+    // actual cost of what was really delivered and name the alternative item
+    // that was supplied. Only relevant when delivering.
+    let actualCostPaisa: number | undefined;
+    let alternativeItemName: string | undefined;
+    if (status === 'DELIVERED') {
+      if (body['actualCostPaisa'] !== undefined) {
+        actualCostPaisa = requireInt(body['actualCostPaisa'], 'actualCostPaisa', { min: 0 });
+      }
+      if (body['alternativeItemName'] !== undefined) {
+        alternativeItemName = requireString(body['alternativeItemName'], 'alternativeItemName', {
+          maxLength: 200,
+        });
+      }
+    }
     const result = await changeOrderStatus(deps.db, {
       orderId,
       status,
       actorId: actor.id,
       note,
+      actualCostPaisa,
+      alternativeItemName,
     });
     res
       .status(200)
@@ -167,10 +184,11 @@ function optionalNote(value: unknown): string | null {
 
 function requirePermission(
   role: 'TEACHER' | 'STAFF' | 'ADMIN',
-  permissions: readonly string[],
-  permission: 'orders:cancel' | 'orders:manage_status',
+  _permissions: readonly string[],
+  _permission: 'orders:cancel' | 'orders:manage_status',
 ): void {
-  if (role !== 'ADMIN' && (role !== 'STAFF' || !permissions.includes(permission))) {
+  // Role-only access control: order operations belong to STAFF and ADMIN.
+  if (role !== 'ADMIN' && role !== 'STAFF') {
     throw forbidden('You do not have permission to perform this action.');
   }
 }

@@ -70,17 +70,23 @@ export interface Order {
   confirmedAt: string;
 }
 export interface BudgetSummary {
-  period: BudgetPeriod;
+  year: number;
+  month: number;
+  period: { id: string; name: string; startsOn: string; endsOn: string };
+  hasAllocation: boolean;
   allocated: Money;
+  adjusted: Money;
+  carryForward: Money;
   spent: Money;
   refunded: Money;
-  adjusted: Money;
   available: Money;
 }
 export interface LedgerEntry {
   id: number;
   teacherId: number;
-  budgetPeriodId: number;
+  budgetPeriodId: number | null;
+  year: number | null;
+  month: number | null;
   entryType: string;
   amount: Money;
   orderId: number | null;
@@ -95,6 +101,9 @@ export interface StaffOrder {
   orderDate: string;
   status: OrderStatus;
   total: Money;
+  /** The fallback dish the teacher declared when ordering, if any. */
+  alternativeItemName: string | null;
+  alternativeUnitPrice: Money | null;
   items: Array<{ name: string; quantity: number }>;
   confirmedAt: string;
 }
@@ -117,16 +126,89 @@ export interface GroupedOrders {
 }
 export interface DailyReport {
   date: string;
+  statusSummary: {
+    total: number;
+    pending: number;
+    processing: number;
+    delivered: number;
+    cancelled: number;
+    spendingOnDelivered: Money;
+  };
   locations: Array<{ location: { id: number; name: string }; orderCount: number; total: Money }>;
   dailyTotal: Money;
 }
-export interface BudgetReportRow {
+export interface BudgetRequest {
+  id: number;
+  teacher: { id: number; fullName: string };
+  requestType: 'budget_increase' | 'debt_allowance';
+  amount: Money;
+  reason: string;
+  status: 'pending' | 'approved' | 'rejected';
+  decidedBy: { id: number; fullName: string | null } | null;
+  decidedAt: string | null;
+  createdAt: string;
+}
+export interface MonthlyReportTeacher {
   teacher: { id: number; fullName: string };
   allocated: Money;
+  adjusted: Money;
+  carryForward: Money;
   spent: Money;
   refunded: Money;
+  remaining: Money;
+  orders: {
+    total: number;
+    pending: number;
+    processing: number;
+    delivered: number;
+    cancelled: number;
+    deliveredSpending: Money;
+  };
+}
+export interface MonthlyReportMonth {
+  year: number;
+  month: number;
+  label: string;
+  teachers: MonthlyReportTeacher[];
+}
+/** One teacher in the monthly budget planning table. */
+export interface MonthlyBudgetRow {
+  teacher: { id: number; fullName: string; email: string };
+  hasAllocation: boolean;
+  /** Base allocation for the month. */
+  allocated: Money;
+  /** Net admin adjustments recorded for the month (increase or decrease). */
   adjusted: Money;
-  available: Money;
+  /** Budget carried into the month from all previous months (may be negative). */
+  carryForward: Money;
+  spent: Money;
+  refunded: Money;
+  /** allocated + adjusted + carry - spent. Negative when the teacher overdrew. */
+  remaining: Money;
+}
+
+/** A successful (non-cancelled) order of one budget month. */
+export interface MonthTransaction {
+  id: number;
+  transactionId: string;
+  teacher: { id: number; fullName: string };
+  orderDate: string;
+  amount: Money;
+  status: string;
+}
+
+export interface AllocationHistoryMonth {
+  year: number;
+  month: number;
+  label: string;
+  totalAllocated: Money;
+  teachers: Array<{ teacherId: number; fullName: string; allocated: Money }>;
+}
+
+export interface AllocationHistory {
+  anchor: { year: number; month: number };
+  months: AllocationHistoryMonth[];
+  grandTotal: Money;
 }
 export interface AppSetting {
   key: string;

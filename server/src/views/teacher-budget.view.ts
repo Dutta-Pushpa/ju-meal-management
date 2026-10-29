@@ -9,18 +9,46 @@ function money(amountPaisa: number) {
   };
 }
 
-export function presentTeacherBudget(row: TeacherBudgetSummaryRow) {
+const MONTH_LABELS = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
+
+function monthLabel(month: number): string {
+  return MONTH_LABELS[Math.min(Math.max(month, 1), 12) - 1]!;
+}
+
+export function presentTeacherBudget(
+  row: TeacherBudgetSummaryRow,
+  year: number,
+  month: number,
+) {
+  const yearMonth = `${year}-${String(month).padStart(2, '0')}`;
   return {
+    year,
+    month,
     period: {
-      id: row.period_id,
-      name: row.period_name,
-      startsOn: row.starts_on,
-      endsOn: row.ends_on,
+      id: yearMonth,
+      name: `${monthLabel(month)} ${year}`,
+      startsOn: `${yearMonth}-01`,
+      endsOn: `${yearMonth}-31`,
     },
+    hasAllocation: row.has_allocation,
     allocated: money(row.allocated_paisa),
+    adjusted: money(row.adjusted_paisa),
+    carryForward: money(row.carry_forward_paisa),
     spent: money(row.spent_paisa),
     refunded: money(row.refunded_paisa),
-    adjusted: money(row.adjusted_paisa),
     available: money(row.available_paisa),
   };
 }
@@ -29,7 +57,7 @@ export function presentTeacherLedgerEntry(row: BudgetEntryRow) {
   return {
     id: row.id,
     teacherId: row.teacher_id,
-    budgetPeriodId: row.budget_period_id,
+    budgetPeriodId: row.budget_period_id ?? null,
     entryType: row.entry_type,
     amount: money(row.amount_paisa),
     orderId: row.order_id ?? null,

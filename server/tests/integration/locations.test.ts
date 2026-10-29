@@ -263,12 +263,12 @@ describe('POST /api/locations', () => {
     expect(res.body.error.code).toBe('FORBIDDEN');
   });
 
-  it('refuses a staff account without locations:manage', async () => {
+  it('allows any staff member (role-only access)', async () => {
     const res = await request(app)
       .post('/api/locations')
       .set(authHeader(collectorToken))
       .send(valid());
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(201);
   });
 
   it('allows a staff account holding locations:manage', async () => {
@@ -332,6 +332,38 @@ describe('POST /api/locations', () => {
       .post('/api/locations')
       .set(authHeader(adminToken))
       .send({ name: 'x'.repeat(201) });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a non-English name and suggests nameBn', async () => {
+    const res = await request(app)
+      .post('/api/locations')
+      .set(authHeader(adminToken))
+      .send({ name: 'বোত্তলা', nameBn: 'বোত্তলা' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    expect(res.body.error.message).toMatch(/nameBn/i);
+  });
+
+  it('keeps English names with digits and punctuation valid', async () => {
+    const name = uniqueName('Cafeteria No. 2 (Old Block)');
+    const res = await request(app)
+      .post('/api/locations')
+      .set(authHeader(adminToken))
+      .send({ name, nameBn: 'ক্যাফেটেরিয়া' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.data.name).toBe(name);
+  });
+
+  it('also enforces English names on PATCH', async () => {
+    const id = await seedLocation({ name: uniqueName('Renamable') });
+    const res = await request(app)
+      .patch(`/api/locations/${id}`)
+      .set(authHeader(adminToken))
+      .send({ name: 'গেরুয়া' });
 
     expect(res.status).toBe(400);
   });

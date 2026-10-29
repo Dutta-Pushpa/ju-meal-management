@@ -6,6 +6,7 @@ import { requireInt } from '../utils/validation.js';
 import { getTeacherBudget, getTeacherLedger } from '../services/teacher-budget.service.js';
 import { presentTeacherBudget, presentTeacherLedgerEntry } from '../views/teacher-budget.view.js';
 import { listBudgetPeriods } from '../models/budget.model.js';
+import { currentDhakaMonth } from '../utils/dhaka-month.js';
 
 const MAX_PAGE_SIZE = 100;
 
@@ -14,7 +15,7 @@ export function getBudget(db: Database) {
     const actor = currentUser(req);
     const { teacherId, year, month } = readIds(req, actor.id, actor.role);
     const summary = await getTeacherBudget(db, teacherId, year, month);
-    res.status(200).json({ data: presentTeacherBudget(summary) });
+    res.status(200).json({ data: presentTeacherBudget(summary, year, month) });
   };
 }
 
@@ -33,8 +34,9 @@ export function getLedger(db: Database) {
 }
 
 function readIds(req: Request, actorId: number, role: string) {
-  const year = readQueryInt(req, 'year', new Date().getFullYear(), 1999, 2099);
-  const month = readQueryInt(req, 'month', new Date().getMonth() + 1, 1, 12);
+  const dhaka = currentDhakaMonth();
+  const year = readQueryInt(req, 'year', dhaka.year, 1999, 2099);
+  const month = readQueryInt(req, 'month', dhaka.month, 1, 12);
   const requestedTeacher = req.query['teacherId'];
   if (role === 'TEACHER') {
     if (

@@ -108,12 +108,13 @@ describe('/api/staff/settings', () => {
     expect(cutoffTime).toBeDefined();
     expect(cutoffTime!.value).toBe("12:30");
 
+    // Settings are administrative controls: only ADMIN may change policy.
     const updated = await request(app)
       .patch('/api/staff/settings/order_placement_deadline')
-      .set(auth(staffToken))
-      .send({ value: "10:30" });
+      .set(auth(adminToken))
+      .send({ value: '10:30' });
     expect(updated.status).toBe(200);
-    expect(updated.body.data.value).toBe("10:30");
+    expect(updated.body.data.value).toBe('10:30');
     expect(
       (
         await query<{ value: string }>(
@@ -134,7 +135,7 @@ describe('/api/staff/settings', () => {
     const today = (
       await query<{ date: string }>(`SELECT (now() AT TIME ZONE 'Asia/Dhaka')::date::text AS date`)
     )[0]!.date;
-    expect(await checkOrderingRules(db, today)).toMatchObject({ closed: true, disabled: false });
+    expect(await checkOrderingRules(db, today)).toMatchObject({ closed: true });
   });
 
   it('rejects invalid values and unknown settings', async () => {
@@ -156,15 +157,24 @@ describe('/api/staff/settings', () => {
     ).toBe(400);
   });
 
-  it('limits staff user management and lets admins deactivate teachers with session revocation', async () => {
+  it('limits user management to admins and lets admins deactivate teachers with session revocation', async () => {
     const teacher = (
       await query<{ id: number }>(`SELECT id FROM users WHERE email = 'settings-teacher@juniv.edu'`)
     )[0]!;
-    const denied = await request(app)
+    // User management is admin-only under the role-only access model.
+    const staffDenied = await request(app)
       .patch(`/api/staff/users/${teacher.id}`)
       .set(auth(staffToken))
+      .send({ isActive: true });
+    expect(staffDenied.status).toBe(403);
+
+    // Role changes are not supported at all: only isActive, fullName, and
+    // email may be patched, so the request is rejected with 400.
+    const denied = await request(app)
+      .patch(`/api/staff/users/${teacher.id}`)
+      .set(auth(adminToken))
       .send({ role: 'ADMIN' });
-    expect(denied.status).toBe(403);
+    expect(denied.status).toBe(400);
 
     const updated = await request(app)
       .patch(`/api/staff/users/${teacher.id}`)

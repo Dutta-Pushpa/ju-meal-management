@@ -6,6 +6,7 @@ import type { AppConfig } from '../../src/config/env.js';
 import type { Logger } from '../../src/utils/logger.js';
 import { createApp } from '../../src/app.js';
 import { closePool, getPool, query, truncateAll } from '../helpers/database.js';
+import { currentDhakaMonth } from '../../src/utils/dhaka-month.js';
 
 const PASSWORD = 'BudgetPass123!';
 const config: AppConfig = {
@@ -45,6 +46,10 @@ let allocatorToken: string;
 let adjusterToken: string;
 let teacherToken: string;
 let teacherId: number;
+let teacher2Id: number;
+let teacher3Id: number;
+let teacher4Id: number;
+let locationId: number;
 let sequence = 0;
 
 function unique(prefix: string): string {
@@ -61,13 +66,7 @@ async function seedUser(
   const rows = await query<{ id: number }>(
     `INSERT INTO users (full_name, email, password_hash, role, permissions)
      VALUES ($1, $2, $3, $4, $5::jsonb) RETURNING id`,
-    [
-      email.split('@')[0],
-      email,
-      await hashPassword(PASSWORD, 10),
-      role,
-      JSON.stringify(permissions),
-    ],
+    [email.split('@')[0], email, await hashPassword(PASSWORD, 10), role, JSON.stringify(permissions)],
   );
   return rows[0]!.id;
 }
@@ -89,6 +88,21 @@ async function createPeriod(token: string, name: string, startsOn: string, endsO
     .send({ name, startsOn, endsOn });
 }
 
+/** Insert a ledger row directly (debits and refunds of test scenarios). */
+async function insertLedger(
+  teacher: number,
+  year: number,
+  month: number,
+  entryType: 'debit' | 'refund',
+  amountPaisa: number,
+) {
+  await query(
+    `INSERT INTO budget_ledger (teacher_id, year, month, entry_type, amount_paisa, reason, created_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $1)`,
+    [teacher, year, month, entryType, amountPaisa, 'test entry'],
+  );
+}
+
 beforeAll(async () => {
   db = getPool();
   await truncateAll();
@@ -97,6 +111,12 @@ beforeAll(async () => {
   await seedUser('allocator@juniv.edu', 'STAFF', ['budgets:allocate']);
   await seedUser('adjuster@juniv.edu', 'STAFF', ['budgets:adjust']);
   teacherId = await seedUser('teacher@juniv.edu', 'TEACHER');
+  teacher2Id = await seedUser('teacher2@juniv.edu', 'TEACHER');
+  teacher3Id = await seedUser('teacher3@juniv.edu', 'TEACHER');
+  teacher4Id = await seedUser('teacher4@juniv.edu', 'TEACHER');
+  locationId = (
+    await query<{ id: number }>(`INSERT INTO food_locations (name) VALUES ('Budget Test Location') RETURNING id`)
+  )[0]!.id;
   adminToken = await login('admin@juniv.edu');
   allocatorToken = await login('allocator@juniv.edu');
   adjusterToken = await login('adjuster@juniv.edu');
@@ -108,170 +128,54 @@ afterAll(async () => {
   await closePool();
 });
 
-describe('POST /api/staff/budget-periods', () => {
-  it('requires the allocation permission and rejects invalid or overlapping dates', async () => {
-    const denied = await createPeriod(teacherToken, unique('Denied'), '2090-01-01', '2090-01-07');
-    expect(denied.status).toBe(403);
-    const invalid = await createPeriod(adminToken, unique('Invalid'), '2090-02-30', '2090-03-01');
-    expect(invalid.status).toBe(400);
-
-    const created = await createPeriod(
-      allocatorToken,
-      unique('Period'),
-      '2090-01-01',
-      '2090-01-07',
-    );
-    expect(created.status).toBe(201);
-    const overlap = await createPeriod(adminToken, unique('Overlap'), '2090-01-07', '2090-01-12');
-    expect(overlap.status).toBe(409);
-    expect(overlap.body.error.code).toBe('BUDGET_PERIOD_ALREADY_EXISTS');
-  });
-
-  it('carries positive unused balance into the next period when rollover is enabled', async () => {
-    const previous = await createPeriod(
-      adminToken,
-      unique('Rollover source'),
-      '2092-04-01',
-      '2092-04-07',
-    );
-    expect(previous.status).toBe(201);
-    const previousId = previous.body.data.id as number;
-    const allocated = await request(app)
+describe('POST /api/staff/budgets/allocations', () => {
+  it('requires the allocation permission and writes the allocation with its ledger credit', async () => {
+    const denied = await request(app)
       .post('/api/staff/budgets/allocations')
-      .set(auth(allocatorToken))
-      .send({
-        teacherId,
-        budgetPeriodId: previousId,
-        amountPaisa: 50000,
-        reason: 'source allocation',
-      });
-    expect(allocated.status).toBe(201);
-    await request(app).post('/api/staff/budgets/adjustments').set(auth(adjusterToken)).send({
-      teacherId,
-      budgetPeriodId: previousId,
-      amountPaisa: -10000,
-      reason: 'source spending',
-    });
-    const setting = await request(app)
-      .patch('/api/staff/settings/budget_rollover')
-      .set(auth(adminToken))
-      .send({ value: true });
-    expect(setting.status).toBe(200);
+      .set(auth(teacherToken))
+      .send({ teacherId, year: 2090, month: 1, amountPaisa: 70000, reason: 'monthly allocation' });
+    expect(denied.status).toBe(403);
 
-    const next = await createPeriod(
-      adminToken,
-      unique('Rollover destination'),
-      '2092-04-08',
-      '2092-04-14',
-    );
-    expect(next.status).toBe(201);
-    expect(next.body.data.rolledOverAmountPaisa).toBe(40000);
-    const entries = await query<{ amount_paisa: number; entry_type: string; reason: string }>(
-      `SELECT amount_paisa, entry_type, reason FROM budget_ledger
-        WHERE teacher_id = $1 AND budget_period_id = $2`,
-      [teacherId, next.body.data.id],
-    );
-    expect(entries).toEqual([
-      expect.objectContaining({
-        amount_paisa: 40000,
-        entry_type: 'adjustment',
-        reason: expect.stringContaining('Rollover source'),
-      }),
-    ]);
-    await request(app)
-      .patch('/api/staff/settings/budget_rollover')
-      .set(auth(adminToken))
-      .send({ value: false });
-    const following = await createPeriod(
-      adminToken,
-      unique('No rollover destination'),
-      '2092-04-15',
-      '2092-04-21',
-    );
-    expect(following.status).toBe(201);
-    expect(following.body.data.rolledOverAmountPaisa).toBe(0);
-    expect(
-      await query(`SELECT id FROM budget_ledger WHERE teacher_id = $1 AND budget_period_id = $2`, [
-        teacherId,
-        following.body.data.id,
-      ]),
-    ).toHaveLength(0);
-  });
-});
-
-describe('budget allocations and adjustments', () => {
-  it('writes an allocation and matching ledger credit atomically and rejects duplicates', async () => {
-    const period = await createPeriod(
-      adminToken,
-      unique('Allocation period'),
-      '2090-02-01',
-      '2090-02-07',
-    );
-    expect(period.status).toBe(201);
-    const budgetPeriodId = period.body.data.id as number;
-    const body = {
-      teacherId,
-      budgetPeriodId,
-      amountPaisa: 70000,
-      reason: 'weekly allocation',
-    };
+    const body = { teacherId, year: 2090, month: 1, amountPaisa: 70000, reason: 'monthly allocation' };
     const created = await request(app)
       .post('/api/staff/budgets/allocations')
       .set(auth(allocatorToken))
       .send(body);
     expect(created.status).toBe(201);
-    expect(created.body.data.allocation.amount).toEqual({
-      amountPaisa: 70000,
-      amountFormatted: '৳700.00',
+    expect(created.body.data.allocation).toMatchObject({
+      teacherId,
+      year: 2090,
+      month: 1,
+      amount: { amountPaisa: 70000, amountFormatted: '৳700.00' },
     });
     expect(created.body.data.ledgerEntry).toMatchObject({
       teacherId,
-      budgetPeriodId,
+      budgetPeriodId: null,
+      year: 2090,
+      month: 1,
       entryType: 'allocation',
       reason: body.reason,
     });
+  });
 
-    const ledger = await request(app)
-      .get(
-        `/api/staff/budgets/ledger?teacherId=${teacherId}&period=${budgetPeriodId}&page=1&perPage=10`,
-      )
-      .set(auth(adminToken));
-    expect(ledger.status).toBe(200);
-    expect(ledger.body.meta).toEqual({ total: 1, page: 1, perPage: 10 });
-    expect(ledger.body.data[0]).toMatchObject({
-      teacherId,
-      budgetPeriodId,
-      entryType: 'allocation',
-      amount: { amountPaisa: 70000 },
-    });
-    const ledgerDenied = await request(app)
-      .get(`/api/staff/budgets/ledger?teacherId=${teacherId}&period=${budgetPeriodId}`)
-      .set(auth(adjusterToken));
-    expect(ledgerDenied.status).toBe(403);
-
+  it('rejects duplicates for the same teacher and month', async () => {
     const duplicate = await request(app)
       .post('/api/staff/budgets/allocations')
       .set(auth(adminToken))
-      .send(body);
+      .send({ teacherId, year: 2090, month: 1, amountPaisa: 50000, reason: 'duplicate' });
     expect(duplicate.status).toBe(409);
     expect(duplicate.body.error.code).toBe('DUPLICATE_ALLOCATION');
     expect(
-      await query('SELECT id FROM budget_ledger WHERE teacher_id = $1 AND budget_period_id = $2', [
+      await query(`SELECT id FROM budget_ledger WHERE teacher_id = $1 AND year = 2090 AND month = 1`, [
         teacherId,
-        budgetPeriodId,
       ]),
     ).toHaveLength(1);
   });
+});
 
+describe('POST /api/staff/budgets/adjustments', () => {
   it('writes signed, reasoned adjustments and rejects zero or missing reasons', async () => {
-    const period = await createPeriod(
-      adminToken,
-      unique('Adjustment period'),
-      '2090-03-01',
-      '2090-03-07',
-    );
-    expect(period.status).toBe(201);
-    const body = { teacherId, budgetPeriodId: period.body.data.id as number, amountPaisa: -5000 };
+    const body = { teacherId, year: 2090, month: 2, amountPaisa: -5000 };
     const noReason = await request(app)
       .post('/api/staff/budgets/adjustments')
       .set(auth(adjusterToken))
@@ -290,80 +194,285 @@ describe('budget allocations and adjustments', () => {
     expect(adjusted.status).toBe(201);
     expect(adjusted.body.data).toMatchObject({
       teacherId,
-      budgetPeriodId: body.budgetPeriodId,
+      year: 2090,
+      month: 2,
       entryType: 'adjustment',
       amount: { amountPaisa: -5000, amountFormatted: '-৳50.00' },
       reason: 'correction',
     });
   });
 
-  it('returns ledger-derived teacher totals and a scoped, newest-first paginated ledger', async () => {
-    const period = await createPeriod(
-      adminToken,
-      unique('Read period'),
-      '2091-01-01',
-      '2091-01-07',
-    );
-    expect(period.status).toBe(201);
-    const periodId = period.body.data.id as number;
-    const allocation = await request(app)
-      .post('/api/staff/budgets/allocations')
-      .set(auth(allocatorToken))
-      .send({
-        teacherId,
-        budgetPeriodId: periodId,
-        amountPaisa: 10000,
-        reason: 'weekly allocation',
-      });
-    expect(allocation.status).toBe(201);
-    await query(
-      `INSERT INTO budget_ledger (teacher_id, budget_period_id, entry_type, amount_paisa, reason, created_by)
-       VALUES ($1, $2, 'debit', -3500, 'order', $3), ($1, $2, 'refund', 500, 'cancelled order', $3)`,
-      [teacherId, periodId, teacherId],
-    );
-
-    const summary = await request(app)
-      .get(`/api/teacher/budget?period=${periodId}`)
-      .set(auth(teacherToken));
-    expect(summary.status).toBe(200);
-    expect(summary.body.data).toMatchObject({
-      allocated: { amountPaisa: 10000 },
-      spent: { amountPaisa: 3500 },
-      refunded: { amountPaisa: 500 },
-      available: { amountPaisa: 7000 },
-    });
-
-    const ledger = await request(app)
-      .get(`/api/teacher/budget/ledger?period=${periodId}&page=1&perPage=2`)
-      .set(auth(teacherToken));
-    expect(ledger.status).toBe(200);
-    expect(ledger.body.meta).toEqual({ total: 3, page: 1, perPage: 2 });
-    expect(ledger.body.data).toHaveLength(2);
-    expect(ledger.body.data[0].entryType).toBe('refund');
-
-    const override = await request(app)
-      .get(`/api/teacher/budget?period=${periodId}&teacherId=${teacherId + 1}`)
-      .set(auth(teacherToken));
-    expect(override.status).toBe(403);
-    const staffRead = await request(app)
-      .get(`/api/teacher/budget?period=${periodId}&teacherId=${teacherId}`)
-      .set(auth(adminToken));
-    expect(staffRead.status).toBe(200);
+  it('defaults year and month to the current Dhaka month', async () => {
+    const adjusted = await request(app)
+      .post('/api/staff/budgets/adjustments')
+      .set(auth(adjusterToken))
+      .send({ teacherId: teacher4Id, amountPaisa: 2500, reason: 'default month check' });
+    expect(adjusted.status).toBe(201);
+    const dhaka = currentDhakaMonth();
+    expect(adjusted.body.data.year).toBe(dhaka.year);
+    expect(adjusted.body.data.month).toBe(dhaka.month);
   });
 });
 
-describe('GET /api/teacher/budget-periods', () => {
-  it('lists saved periods to authenticated users without exposing ledger data', async () => {
-    const created = await createPeriod(adminToken, 'List periods', '2095-01-01', '2095-01-07');
-    expect(created.status).toBe(201);
+describe('GET /api/staff/budgets/ledger', () => {
+  it('returns a month-scoped, newest-first paginated ledger and guards permissions', async () => {
+    const ledger = await request(app)
+      .get(`/api/staff/budgets/ledger?teacherId=${teacherId}&year=2090&month=1&page=1&perPage=10`)
+      .set(auth(adminToken));
+    expect(ledger.status).toBe(200);
+    expect(ledger.body.meta).toEqual({ total: 1, page: 1, perPage: 10 });
+    expect(ledger.body.data[0]).toMatchObject({
+      teacherId,
+      year: 2090,
+      month: 1,
+      entryType: 'allocation',
+      amount: { amountPaisa: 70000 },
+    });
 
-    const response = await request(app).get('/api/teacher/budget-periods').set(auth(teacherToken));
+    // Role-only access: any staff member may read the ledger; teachers cannot.
+    const ledgerAllowed = await request(app)
+      .get(`/api/staff/budgets/ledger?teacherId=${teacherId}&year=2090&month=1`)
+      .set(auth(adjusterToken));
+    expect(ledgerAllowed.status).toBe(200);
+
+    const teacherDenied = await request(app)
+      .get(`/api/staff/budgets/ledger?teacherId=${teacherId}&year=2090&month=1`)
+      .set(auth(teacherToken));
+    expect(teacherDenied.status).toBe(403);
+
+    const missingTeacher = await request(app)
+      .get(`/api/staff/budgets/ledger?year=2090&month=1`)
+      .set(auth(adminToken));
+    expect(missingTeacher.status).toBe(400);
+  });
+});
+
+describe('GET /api/staff/budgets/monthly', () => {
+  it('lists every active teacher with allocation, carry-forward, and remaining balance', async () => {
+    // Overspend teacher2 in 2090-02: 50000 allocated, 60000 spent, 1000
+    // refunded -> remaining -9000, which must roll into 2090-03 negatively.
+    const allocated = await request(app)
+      .post('/api/staff/budgets/allocations')
+      .set(auth(adminToken))
+      .send({ teacherId: teacher2Id, year: 2090, month: 2, amountPaisa: 50000, reason: 'monthly allocation' });
+    expect(allocated.status).toBe(201);
+    await insertLedger(teacher2Id, 2090, 2, 'debit', -60000);
+    await insertLedger(teacher2Id, 2090, 2, 'refund', 1000);
+
+    const february = await request(app)
+      .get('/api/staff/budgets/monthly?year=2090&month=2')
+      .set(auth(adminToken));
+    expect(february.status).toBe(200);
+    expect(february.body.meta.total).toBe(4);
+    const rowsById = new Map(february.body.data.map((row: { teacher: { id: number } }) => [row.teacher.id, row]));
+
+    const overspent = rowsById.get(teacher2Id);
+    expect(overspent).toMatchObject({
+      hasAllocation: true,
+      allocated: { amountPaisa: 50000 },
+      carryForward: { amountPaisa: 0 },
+      spent: { amountPaisa: 60000 },
+      refunded: { amountPaisa: 1000 },
+      remaining: { amountPaisa: -9000, amountFormatted: '-৳90.00' },
+    });
+
+    // Teachers without an allocation for the month still appear, with zeros.
+    const unallocated = rowsById.get(teacher3Id);
+    expect(unallocated).toMatchObject({
+      hasAllocation: false,
+      allocated: { amountPaisa: 0 },
+      remaining: { amountPaisa: 0 },
+    });
+
+    // Unused/negative budget carries into the next month automatically.
+    const marchAllocation = await request(app)
+      .post('/api/staff/budgets/allocations')
+      .set(auth(adminToken))
+      .send({ teacherId: teacher2Id, year: 2090, month: 3, amountPaisa: 50000, reason: 'next month allocation' });
+    expect(marchAllocation.status).toBe(201);
+
+    const march = await request(app)
+      .get('/api/staff/budgets/monthly?year=2090&month=3')
+      .set(auth(adminToken));
+    expect(march.status).toBe(200);
+    const marchRows = new Map(march.body.data.map((row: { teacher: { id: number } }) => [row.teacher.id, row]));
+    expect(marchRows.get(teacher2Id)).toMatchObject({
+      allocated: { amountPaisa: 50000 },
+      carryForward: { amountPaisa: -9000 },
+      remaining: { amountPaisa: 41000 },
+    });
+  });
+
+  it('allows any staff member and denies teachers (role-only access)', async () => {
+    const allowed = await request(app)
+      .get('/api/staff/budgets/monthly?year=2090&month=2')
+      .set(auth(adjusterToken));
+    expect(allowed.status).toBe(200);
+    const deniedTeacher = await request(app)
+      .get('/api/staff/budgets/monthly?year=2090&month=2')
+      .set(auth(teacherToken));
+    expect(deniedTeacher.status).toBe(403);
+  });
+});
+
+describe('GET /api/staff/budgets/transactions', () => {
+  it('lists successful orders of the month with transaction ids and filters', async () => {
+    await query(
+      `INSERT INTO orders (teacher_id, food_location_id, order_date, status, total_paisa, cancelled_at)
+       VALUES ($1, $3, '2090-04-10', 'PENDING', 8500, NULL),
+              ($1, $3, '2090-04-12', 'DELIVERED', 12000, NULL),
+              ($1, $3, '2090-04-14', 'CANCELLED', 9000, now()),
+              ($2, $3, '2090-04-16', 'PENDING', 4000, NULL)`,
+      [teacherId, teacher2Id, locationId],
+    );
+
+    const response = await request(app)
+      .get('/api/staff/budgets/transactions?year=2090&month=4')
+      .set(auth(adminToken));
     expect(response.status).toBe(200);
+    expect(response.body.meta).toEqual({ total: 3, page: 1, perPage: 50 });
+    // Newest first; cancelled orders are excluded.
+    expect(response.body.data.map((row: { orderDate: string }) => row.orderDate)).toEqual([
+      '2090-04-16',
+      '2090-04-12',
+      '2090-04-10',
+    ]);
+    for (const entry of response.body.data) {
+      expect(entry.transactionId).toMatch(/^TXN-\d{6}$/);
+      expect(entry.status).not.toBe('CANCELLED');
+    }
+
+    const filtered = await request(app)
+      .get(`/api/staff/budgets/transactions?year=2090&month=4&teacherId=${teacher2Id}`)
+      .set(auth(adminToken));
+    expect(filtered.status).toBe(200);
+    expect(filtered.body.meta.total).toBe(1);
+    expect(filtered.body.data[0].teacher).toMatchObject({ id: teacher2Id });
+    expect(filtered.body.data[0].amount).toEqual({ amountPaisa: 4000, amountFormatted: '৳40.00' });
+  });
+});
+
+describe('GET /api/staff/budgets/history', () => {
+  it('returns the six-month allocation window with totals', async () => {
+    await request(app)
+      .post('/api/staff/budgets/allocations')
+      .set(auth(adminToken))
+      .send({ teacherId: teacher2Id, year: 2090, month: 1, amountPaisa: 20000, reason: 'outside window' });
+    await request(app)
+      .post('/api/staff/budgets/allocations')
+      .set(auth(adminToken))
+      .send({ teacherId, year: 2090, month: 6, amountPaisa: 20000, reason: 'june teacher' });
+    await request(app)
+      .post('/api/staff/budgets/allocations')
+      .set(auth(adminToken))
+      .send({ teacherId: teacher2Id, year: 2090, month: 6, amountPaisa: 30000, reason: 'june teacher2' });
+
+    const response = await request(app)
+      .get('/api/staff/budgets/history?year=2090&month=6')
+      .set(auth(adminToken));
+    expect(response.status).toBe(200);
+    expect(response.body.data.anchor).toEqual({ year: 2090, month: 6 });
+    expect(response.body.data.months).toHaveLength(6);
+    expect(response.body.data.months[0]).toMatchObject({ year: 2090, month: 1, label: 'January 2090' });
+    expect(response.body.data.months[5]).toMatchObject({ year: 2090, month: 6, label: 'June 2090' });
+    // January is inside the window (Jan-Jun): the teacher's original 70000
+    // allocation plus teacher2's 20000.
+    expect(response.body.data.months[0].totalAllocated).toEqual({
+      amountPaisa: 90000,
+      amountFormatted: '৳900.00',
+    });
+    expect(response.body.data.months[5].totalAllocated).toEqual({
+      amountPaisa: 50000,
+      amountFormatted: '৳500.00',
+    });
+    // 90000 (Jan) + 50000 (Feb) + 50000 (Mar, from the monthly-table test)
+    // + 50000 (Jun).
+    expect(response.body.data.grandTotal).toEqual({
+      amountPaisa: 240000,
+      amountFormatted: '৳2400.00',
+    });
+  });
+});
+
+describe('GET /api/teacher/budget', () => {
+  it('returns the monthly summary with carry-forward, scoped by role', async () => {
+    const summary = await request(app)
+      .get('/api/teacher/budget?year=2090&month=1')
+      .set(auth(teacherToken));
+    expect(summary.status).toBe(200);
+    expect(summary.body.data).toMatchObject({
+      year: 2090,
+      month: 1,
+      period: { id: '2090-01', name: 'January 2090' },
+      hasAllocation: true,
+      allocated: { amountPaisa: 70000 },
+      available: { amountPaisa: 70000 },
+    });
+
+    const override = await request(app)
+      .get(`/api/teacher/budget?year=2090&month=1&teacherId=${teacher2Id}`)
+      .set(auth(teacherToken));
+    expect(override.status).toBe(403);
+
+    const staffRead = await request(app)
+      .get(`/api/teacher/budget?year=2090&month=3&teacherId=${teacher2Id}`)
+      .set(auth(adminToken));
+    expect(staffRead.status).toBe(200);
+    // By now teacher2 also holds the 2090-01 history allocation (20000), so the
+    // carry-forward is 70000 of prior allocations - 59000 of prior activity.
+    expect(staffRead.body.data).toMatchObject({
+      allocated: { amountPaisa: 50000 },
+      carryForward: { amountPaisa: 11000 },
+      available: { amountPaisa: 61000 },
+    });
+  });
+
+  it('defaults to the current Dhaka month when year and month are omitted', async () => {
+    const summary = await request(app)
+      .get(`/api/teacher/budget?teacherId=${teacher4Id}`)
+      .set(auth(adminToken));
+    expect(summary.status).toBe(200);
+    const dhaka = currentDhakaMonth();
+    expect(summary.body.data.year).toBe(dhaka.year);
+    expect(summary.body.data.month).toBe(dhaka.month);
+    // The default-month adjustment written earlier is reflected.
+    expect(summary.body.data.adjusted).toEqual({ amountPaisa: 2500, amountFormatted: '৳25.00' });
+  });
+});
+
+describe('GET /api/teacher/budget/ledger', () => {
+  it('returns the teacher’s month ledger, paginated and newest first', async () => {
+    const ledger = await request(app)
+      .get('/api/teacher/budget/ledger?year=2090&month=1&page=1&perPage=10')
+      .set(auth(teacherToken));
+    expect(ledger.status).toBe(200);
+    expect(ledger.body.meta).toEqual({ total: 1, page: 1, perPage: 10 });
+    expect(ledger.body.data[0]).toMatchObject({
+      teacherId,
+      entryType: 'allocation',
+      amount: { amountPaisa: 70000 },
+    });
+  });
+});
+
+describe('legacy budget periods', () => {
+  it('still accepts period creation with validation and lists saved periods', async () => {
+    const invalid = await createPeriod(adminToken, unique('Invalid'), '2090-02-30', '2090-03-01');
+    expect(invalid.status).toBe(400);
+
+    const created = await createPeriod(allocatorToken, unique('Period'), '2090-01-01', '2090-01-07');
+    expect(created.status).toBe(201);
+    const overlap = await createPeriod(adminToken, unique('Overlap'), '2090-01-07', '2090-01-12');
+    expect(overlap.status).toBe(409);
+    expect(overlap.body.error.code).toBe('BUDGET_PERIOD_ALREADY_EXISTS');
+
+    const listed = await request(app).get('/api/teacher/budget-periods').set(auth(teacherToken));
+    expect(listed.status).toBe(200);
     expect(
-      response.body.data.some((period: { name: string }) => period.name === 'List periods'),
+      listed.body.data.some((period: { name: string }) => period.name === created.body.data.name),
     ).toBe(true);
-    expect(response.body.data[0]).toHaveProperty('startsOn');
-    expect(response.body.data[0]).not.toHaveProperty('amountPaisa');
+    expect(listed.body.data[0]).toHaveProperty('startsOn');
+    expect(listed.body.data[0]).not.toHaveProperty('amountPaisa');
   });
 });
 

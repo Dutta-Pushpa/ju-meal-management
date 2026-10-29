@@ -57,7 +57,7 @@ Every failure uses the same shape:
 {
   "error": {
     "code": "BUDGET_INSUFFICIENT",
-    "message": "Order total exceeds the available budget for this period.",
+    "message": "Order total exceeds the available budget for this month.",
     "details": [{ "field": "items", "issue": "required" }]
   }
 }
@@ -96,10 +96,9 @@ never included.
 | `EMAIL_ALREADY_EXISTS`         | 409    | Registration or update used an existing email                           |
 | `LOCATION_ALREADY_EXISTS`      | 409    | A location with that name already exists                                |
 | `LOCATION_HAS_ACTIVE_ORDERS`   | 409    | The location has orders in the current period and cannot be deactivated |
-| `DUPLICATE_ALLOCATION`         | 409    | The teacher already has an allocation for this period                   |
+| `DUPLICATE_ALLOCATION`         | 409    | The teacher already has an allocation for this calendar month           |
 | `BUDGET_PERIOD_ALREADY_EXISTS` | 409    | The period name is already used or its dates overlap another period     |
 | `ORDERING_CLOSED`              | 422    | The cutoff for this date has passed                                     |
-| `ORDERING_DISABLED`            | 422    | Ordering is disabled for this date, such as a holiday                   |
 | `ITEM_UNAVAILABLE`             | 422    | A requested item is inactive or unavailable                             |
 | `MIXED_LOCATIONS`              | 422    | An order contained items from more than one location                    |
 | `BUDGET_INSUFFICIENT`          | 422    | Order total exceeds the available balance                               |
@@ -208,45 +207,67 @@ user's `token_version` has changed since it was issued.
 
 ## Teacher — budget
 
-### `GET /api/teacher/budget-periods`
+Budgets are planned per calendar month (Asia/Dhaka time). `year` and `month`
+default to the current Dhaka month when both are omitted; supplying only one of
+them is a `400`.
+
+### `GET /api/teacher/budget?year=2026&month=10`
 
 **Auth:** `TEACHER`, `STAFF`, or `ADMIN`.
 
-Returns the available budget periods as safe presentation fields (`id`, `name`,
-`startsOn`, `endsOn`, `isActive`, and `createdAt`). The frontend uses this
-collection to let the user select a budget period; it does not manufacture
-weekly periods in the browser.
-
-### `GET /api/teacher/budget?period=<periodId>`
-
-**Auth:** `TEACHER`, `STAFF`, or `ADMIN`.
-
-Returns the signed sums from the ledger for the given period. A `TEACHER` always
-receives their own budget; supplying another `teacherId` is rejected. `STAFF`
-and `ADMIN` must supply `teacherId` to view a teacher's budget.
+Returns the teacher's budget summary for one month. A `TEACHER` always receives
+their own budget; supplying another `teacherId` is rejected. `STAFF` and `ADMIN`
+must supply `teacherId` to view a teacher's budget.
 
 ```json
 {
   "data": {
-    "period": { "id": 12, "name": "2026-W42", "startsOn": "2026-10-12", "endsOn": "2026-10-18" },
+    "year": 2026,
+    "month": 10,
+    "period": { "id": "2026-10", "name": "October 2026", "startsOn": "2026-10-01", "endsOn": "2026-10-31" },
+    "hasAllocation": true,
     "allocated": { "amountPaisa": 70000, "amountFormatted": "৳700.00" },
+    "adjusted": { "amountPaisa": 3000, "amountFormatted": "৳30.00" },
+    "carryForward": { "amountPaisa": 12000, "amountFormatted": "৳120.00" },
     "spent": { "amountPaisa": 45000, "amountFormatted": "৳450.00" },
     "refunded": { "amountPaisa": 5000, "amountFormatted": "৳50.00" },
-    "adjusted": { "amountPaisa": 0, "amountFormatted": "৳0.00" },
-    "available": { "amountPaisa": 30000, "amountFormatted": "৳300.00" }
+    "available": { "amountPaisa": 45000, "amountFormatted": "৳450.00" }
   }
 }
 ```
 
-`available` is the sum of the ledger. It is computed, never read from a stored
-column.
+`available = allocated + adjusted + carryForward − spent + refunded`. The
+carry-forward is computed from earlier months' ledger activity (positive
+remaining balances roll into the month; a negative remaining balance rolls in
+as a negative carry-forward). It is computed, never read from a stored column.
+`period` is a presentation label derived from `year`/`month`, not a legacy
+budget period record.
 
-### `GET /api/teacher/budget/ledger?period=<periodId>`
+### `GET /api/teacher/budget/ledger?year=2026&month=10`
 
-Paginated ledger entries for the authenticated teacher, newest first. Supports
-`page` (default `1`) and `perPage` (default `20`, maximum `100`). `STAFF` and
-`ADMIN` must supply `teacherId`; teachers cannot override their own identity.
-The response includes `meta.total`, `meta.page`, and `meta.perPage`.
+Paginated ledger entries of the authenticated teacher for one month, newest
+first. Supports `page` (default `1`) and `perPage` (default `20`, maximum
+`100`). `STAFF` and `ADMIN` must supply `teacherId`; teachers cannot override
+their own identity. The response includes `meta.total`, `meta.page`, and
+`meta.perPage`.
+
+> Legacy: `GET /api/teacher/budget-periods` still returns the old budget-period
+> records, but the UI no longer uses it. Monthly planning replaced budget
+> periods.
+
+### `POST /api/teacher/budget-requests`
+
+**Auth:** any authenticated role; the request belongs to the signed-in user.
+
+Body: `{ "requestType": "budget_increase" | "debt_allowance", "amountPaisa": <positive integer>, "reason": "<text>" }`.
+Creates a pending budget request for an administrator to review. Returns `201`
+with the created request.
+
+### `GET /api/teacher/budget-requests?page=1&perPage=20&status=pending`
+
+The signed-in teacher's own requests, newest first, each with `status`
+(`pending` | `approved` | `rejected`), `amount`, `reason`, and — once decided —
+`decidedBy` and `decidedAt`.
 
 ## Locations and menus
 
@@ -314,11 +335,11 @@ absent field is left untouched. Sending `"nameBn": null` clears it. Setting
 **Soft deactivation.** Sets `is_active = false`. Returns `200`. The row is
 retained because historical orders reference it, per policy P8.
 
-Deactivating a location that still has orders in the current budget period
-returns `409 LOCATION_HAS_ACTIVE_ORDERS`. Both this endpoint and `PATCH` with
-`"isActive": false` apply the same guard; neither bypasses it. A location whose
-only orders in the period are cancelled, or whose orders fall in a past period,
-deactivates normally.
+Deactivating a location that still has non-cancelled orders on the current
+business date returns `409 LOCATION_HAS_ACTIVE_ORDERS`. Both this endpoint and
+`PATCH` with `"isActive": false` apply the same guard; neither bypasses it. A
+location whose only orders that day are cancelled, or whose orders fall on past
+dates, deactivates normally.
 
 ### `GET /api/locations/:id/menu`
 
@@ -363,9 +384,17 @@ Request:
 ```
 
 `idempotencyKey` is client-generated and stable across retries of the same
-checkout attempt. `orderDate` must be a valid business date covered by an active
-budget period. `items` must contain 1–50 lines; quantities are limited to 100
-per line. The supplied `foodLocationId` must match every active, available item.
+checkout attempt. `orderDate` must be a valid business date within a calendar
+month that has a budget allocation for the teacher (the debit is booked against
+that month's budget). `items` must contain 1–50 lines; quantities are limited
+to 100 per line. The supplied `foodLocationId` must match every active,
+available item.
+
+Optionally the teacher may declare a fallback dish:
+`alternativeItemName` (string) and `alternativeUnitPricePaisa` (positive
+integer). Both must be sent together. This records what the teacher accepts if
+their first choice is unavailable; the estimated total is still debited at
+placement and settled against the actual delivered cost later.
 
 `201` response:
 
@@ -400,7 +429,6 @@ Failure modes:
 | Situation                             | Code                  | Status                          |
 | ------------------------------------- | --------------------- | ------------------------------- |
 | After the 12:00 PM Asia/Dhaka cutoff  | `ORDERING_CLOSED`     | 422                             |
-| Ordering disabled for that date       | `ORDERING_DISABLED`   | 422                             |
 | An item is inactive or unavailable    | `ITEM_UNAVAILABLE`    | 422                             |
 | Quantity is not a positive integer    | `VALIDATION_ERROR`    | 400                             |
 | Items span more than one location     | `MIXED_LOCATIONS`     | 422                             |
@@ -425,8 +453,7 @@ Single order. `404` when the order does not belong to the caller.
 
 ### `POST /api/orders/:id/cancel`
 
-**Auth:** the owning teacher before the cutoff, or staff with the
-`orders:cancel` permission at any time.
+**Auth:** the owning teacher before the cutoff, or `STAFF`/`ADMIN` at any time.
 
 ```json
 { "reason": "changed my mind" }
@@ -498,21 +525,38 @@ Nothing is hard-coded or cached from a seed.
 
 ### `PATCH /api/staff/orders/:id/status`
 
-**Auth:** `STAFF` or `ADMIN` with `orders:manage_status`.
+**Auth:** `STAFF` or `ADMIN`.
 
 ```json
 { "status": "COLLECTED", "note": "collected from vendor at 12:40" }
 ```
 
 Allowed transitions: `CONFIRMED → COLLECTED → DELIVERED`. Cancelling through
-this endpoint requires `orders:cancel` (or `ADMIN`), a non-empty `note`, and
-creates the refund. Any other combination returns `422 INVALID_STATUS_TRANSITION`.
+this endpoint requires a non-empty `note` and creates the refund. Any other
+combination returns `422 INVALID_STATUS_TRANSITION`.
+
+When delivering, the staff member may reconcile the billed cost:
+
+```json
+{
+  "status": "DELIVERED",
+  "actualCostPaisa": 27500,
+  "alternativeItemName": "Beef Tehari",
+  "note": "chicken unavailable"
+}
+```
+
+Both fields are optional. The estimated total was already debited when the
+order was placed; the difference between `actualCostPaisa` and the estimate is
+debited (costlier) or refunded (cheaper) against the order's budget month, the
+order's billed total is updated, and `alternativeItemName` records what was
+actually served. Omitting both delivers the order at the estimated cost.
 
 Each transition appends an `order_status_events` row and an audit entry.
 
 ### `PATCH /api/staff/order-items/:id/status`
 
-**Auth:** `STAFF` or `ADMIN` with `orders:manage_status`.
+**Auth:** `STAFF` or `ADMIN`.
 
 Item-level collection state, for when parts of an order are collected separately.
 Allowed transitions are `PENDING → COLLECTED → DELIVERED`. Each change appends
@@ -524,59 +568,193 @@ optional `note`.
 **Auth:** `STAFF` or `ADMIN`.
 
 Totals and order counts by location plus the daily total, computed from
-non-cancelled order records.
+non-cancelled order records. The response also carries a `statusSummary`
+object with per-status counts for every order of the date (including
+cancelled ones) and the spending on delivered orders:
 
-### `GET /api/staff/reports/budget?period=<periodId>`
+```json
+{
+  "data": {
+    "date": "2026-10-28",
+    "statusSummary": {
+      "total": 12,
+      "pending": 2,
+      "processing": 4,
+      "delivered": 5,
+      "cancelled": 1,
+      "spendingOnDelivered": { "amountPaisa": 95000, "amountFormatted": "৳950.00" }
+    },
+    "locations": [
+      { "location": { "id": 1, "name": "Cafeteria" }, "orderCount": 10, "total": { "amountPaisa": 180000, "amountFormatted": "৳1800.00" } }
+    ],
+    "dailyTotal": { "amountPaisa": 180000, "amountFormatted": "৳1800.00" }
+  }
+}
+```
+
+### `GET /api/staff/reports/monthly?year=2026&month=10`
+
+**Auth:** `ADMIN`, or `STAFF` with `budgets:view`.
+
+Six-month teacher report ending at the anchor month (inclusive). For each
+month it lists every teacher with their budget state (allocation, signed
+adjustments, carry-forward, spending, refunds, remaining balance) and order
+counts by status with the spending on delivered orders. `year`/`month`
+default to the current Dhaka month.
+
+### `GET /api/staff/reports/budget?period=<periodId>` (legacy)
 
 **Auth:** `ADMIN`, or `STAFF` with `budgets:view`.
 
 Per-teacher allocation, spending, refunds, signed adjustments, and remaining
-balance for a period. Amounts come from the ledger.
+balance for a legacy budget period. Amounts come from the ledger. Retained for
+historical reporting only; the UI uses `GET /api/staff/budgets/monthly`, which
+is the monthly equivalent.
 
 ## Administration
 
-Every endpoint here requires `ADMIN`, or `STAFF` with the named permission.
+Access is role-based: every endpoint here requires `ADMIN`, or `STAFF`.
+Configurable per-user permissions were removed from the authorisation model.
 
-### `POST /api/staff/budget-periods`
+### `GET /api/staff/budgets/monthly?year=2026&month=10`
+
+**Auth:** `ADMIN`, or `STAFF` with `budgets:view`.
+
+The monthly planning table: every active teacher with their allocation,
+adjustments, carry-forward, spending, refunds, and remaining balance for the
+month. `year`/`month` default to the current Dhaka month.
+
+```json
+{
+  "data": [
+    {
+      "teacher": { "id": 42, "fullName": "Dr. Ahsan Karim", "email": "teacher@juniv.edu" },
+      "hasAllocation": true,
+      "allocated": { "amountPaisa": 280000, "amountFormatted": "৳2800.00" },
+      "adjusted": { "amountPaisa": 5000, "amountFormatted": "৳50.00" },
+      "carryForward": { "amountPaisa": 12000, "amountFormatted": "৳120.00" },
+      "spent": { "amountPaisa": 45000, "amountFormatted": "৳450.00" },
+      "refunded": { "amountPaisa": 0, "amountFormatted": "৳0.00" },
+      "remaining": { "amountPaisa": 252000, "amountFormatted": "৳2520.00" }
+    }
+  ],
+  "meta": { "total": 1 }
+}
+```
+
+`remaining` may be negative when a teacher overspends; it rolls into the next
+month as a negative carry-forward.
+
+### `GET /api/staff/budgets/transactions?year=2026&month=10&teacherId=42`
+
+**Auth:** `ADMIN`, or `STAFF` with `budgets:view`.
+
+Successful (non-cancelled) orders placed in the budget month — date, amount,
+status, and a transaction id `TXN-<orderId padded to 6 digits>`. Optional
+`teacherId` filters to one teacher; supports `page` (default `1`) and `perPage`
+(default `50`, maximum `100`).
+
+```json
+{
+  "data": [
+    {
+      "id": 8,
+      "transactionId": "TXN-000008",
+      "teacher": { "id": 42, "fullName": "Dr. Ahsan Karim" },
+      "orderDate": "2026-10-14",
+      "amount": { "amountPaisa": 8500, "amountFormatted": "৳85.00" },
+      "status": "delivered"
+    }
+  ],
+  "meta": { "total": 1, "page": 1, "perPage": 50 }
+}
+```
+
+### `GET /api/staff/budgets/history?year=2026&month=10`
+
+**Auth:** `ADMIN`, or `STAFF` with `budgets:view`.
+
+Allocation history for the six months ending at `year`/`month` (inclusive),
+plus per-month totals and a grand total.
+
+```json
+{
+  "anchor": { "year": 2026, "month": 10 },
+  "months": [
+    {
+      "year": 2026,
+      "month": 10,
+      "label": "October 2026",
+      "totalAllocated": { "amountPaisa": 1680000, "amountFormatted": "৳16800.00" },
+      "teachers": [
+        { "teacherId": 42, "fullName": "Dr. Ahsan Karim", "allocated": { "amountPaisa": 280000, "amountFormatted": "৳2800.00" } }
+      ]
+    }
+  ],
+  "grandTotal": { "amountPaisa": 8400000, "amountFormatted": "৳84000.00" }
+}
+```
+
+### `POST /api/staff/budget-periods` (legacy)
 
 **Auth:** `ADMIN`, or `STAFF` with `budgets:allocate`.
 
-Creates a budget period from `name`, `startsOn`, and `endsOn` business dates.
-Rejects a duplicate name or overlapping dates with `409`.
-When `budget_rollover` is enabled, positive unspent balances from the most
-recent earlier period are added as `adjustment` ledger entries in the new
-period. The response includes `rolledOverTeachers` and
-`rolledOverAmountPaisa`. When disabled, no carryover entries are created.
+Creates a legacy budget period from `name`, `startsOn`, and `endsOn` business
+dates. Rejects a duplicate name or overlapping dates with `409`. Retained for
+backward compatibility; the monthly planning UI does not use it.
 
 ### `POST /api/staff/budgets/allocations`
 
 **Auth:** `ADMIN`, or `STAFF` with `budgets:allocate`.
 
 ```json
-{ "teacherId": 42, "budgetPeriodId": 12, "amountPaisa": 70000, "reason": "weekly allocation" }
+{ "teacherId": 42, "year": 2026, "month": 10, "amountPaisa": 280000, "reason": "monthly allocation" }
 ```
 
-Creates the allocation and its matching positive ledger entry in one
+Creates the monthly allocation and its matching positive ledger entry in one
 transaction. `409 DUPLICATE_ALLOCATION` if the teacher already has one for that
-period.
+calendar month (use the adjustment endpoint to change it).
 
 ### `POST /api/staff/budgets/adjustments`
 
 **Auth:** `ADMIN`, or `STAFF` with `budgets:adjust`.
 
 ```json
-{ "teacherId": 42, "budgetPeriodId": 12, "amountPaisa": -5000, "reason": "correction" }
+{ "teacherId": 42, "year": 2026, "month": 10, "amountPaisa": -5000, "reason": "correction" }
 ```
 
-`reason` is required. Written as a signed `adjustment` ledger entry.
+`year`/`month` default to the current Dhaka month when omitted. `amountPaisa`
+must be a non-zero signed integer (negative to decrease the budget). `reason`
+is required. Written as a signed `adjustment` ledger entry against that month.
 
-### `GET /api/staff/budgets/ledger?teacherId=<id>&period=<id>`
+### `GET /api/staff/budgets/ledger?teacherId=<id>&year=2026&month=10`
 
 **Auth:** `ADMIN`, or `STAFF` with `budgets:view`.
 
-Ledger entries for one teacher and period, newest first. Supports `page`
-(default `1`) and `perPage` (default `20`, maximum `100`). The response includes
-`meta.total`, `meta.page`, and `meta.perPage`.
+Ledger entries for one teacher and calendar month, newest first. `year`/`month`
+default to the current Dhaka month; `teacherId` is required and `404`s when the
+teacher does not exist. Supports `page` (default `1`) and `perPage` (default
+`20`, maximum `100`). The response includes `meta.total`, `meta.page`, and
+`meta.perPage`.
+
+### `GET /api/staff/budget-requests?status=pending&teacherId=42`
+
+**Auth:** `ADMIN`, or `STAFF` with `budgets:view`.
+
+Review inbox of teacher budget requests, newest first. Both filters are
+optional; `status` must be `pending`, `approved` or `rejected` when present.
+
+### `POST /api/staff/budget-requests/:id/decision`
+
+**Auth:** `ADMIN`, or `STAFF` with `budgets:adjust`.
+
+Body: `{ "decision": "approved" | "rejected", "note": "optional text" }`.
+Only pending requests can be decided; deciding again returns `400`. Approving a
+`budget_increase` request writes a positive `adjustment` ledger entry for the
+teacher's current Dhaka month; approving a `debt_allowance` request raises
+that teacher's personal `debt_allowance_paisa`, which the order-placement
+debt check adds on top of the global `max_debt_paisa` policy. Both decisions
+are recorded in the audit trail.
 
 ### `GET /api/staff/menu-items`
 
@@ -653,15 +831,21 @@ deactivated or changed to another role.
 The read endpoint returns the supported settings with their descriptions and
 last update metadata. Update with `{ "value": ... }`. Supported keys and values:
 
-- `order_cutoff_time`: 24-hour `HH:mm` string. Order placement and teacher
-  cancellation evaluate this cutoff using the saved `timezone`.
-- `timezone`: valid IANA timezone name, such as `Asia/Dhaka`.
-- `budget_rollover`: boolean for the budget rollover policy.
-- `ordering_disabled_dates`: array of up to 366 unique `YYYY-MM-DD` dates.
+- `order_placement_deadline`: 24-hour `HH:mm` JSON string, such as `"12:30"`.
+  Latest Dhaka clock time a teacher may place an order.
+- `order_cancellation_deadline`: 24-hour `HH:mm` JSON string. Latest Dhaka clock
+  time an order may be cancelled.
+- `negative_balance_allowed`: boolean. Whether a teacher may place orders that
+  push their remaining monthly balance below zero.
+- `max_debt_paisa`: non-negative integer. Maximum permitted outstanding debt in
+  paisa when negative balance is allowed; `0` means no debt permitted.
+- `max_additional_orders`: non-negative integer. Additional orders a teacher may
+  place beyond their balance when debt is allowed.
 
 Each update is written to the audit log in the same transaction as the setting.
-Rollover applies when a new budget period is created; changing the setting does
-not recalculate existing periods.
+Deadlines are evaluated in `Asia/Dhaka`. Unspent monthly budget balances roll
+forward automatically as part of the monthly balance calculation (see
+`GET /api/staff/budgets/monthly`); there is no rollover setting.
 
 ## System
 

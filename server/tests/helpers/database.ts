@@ -142,9 +142,9 @@ export async function withClients<T>(
 export async function truncateAll(): Promise<void> {
   await query(`
     TRUNCATE TABLE
-      order_status_events, order_items, budget_ledger, budget_allocations,
-      orders, menu_items, budget_periods, food_locations, sessions,
-      audit_logs, users
+      order_status_events, order_items, budget_ledger, budget_requests,
+      budget_monthly_allocations, budget_allocations, orders, menu_items,
+      budget_periods, food_locations, sessions, audit_logs, app_settings, users
     RESTART IDENTITY CASCADE
   `);
 
@@ -153,10 +153,16 @@ export async function truncateAll(): Promise<void> {
   // defaults are restored here for the same reason the seed file restores them.
   await query(`
     INSERT INTO app_settings (key, value, description) VALUES
-      
-      
-      
-      
+      ('order_placement_deadline', '"12:30"',
+       'Latest clock time (Dhaka business time) a teacher may place an order. Enforced by the backend.'),
+      ('order_cancellation_deadline', '"13:00"',
+       'Latest clock time (Dhaka business time) an order may be cancelled. Enforced by the backend.'),
+      ('negative_balance_allowed', 'false',
+       'Whether a teacher may place orders that push their remaining balance below zero.'),
+      ('max_debt_paisa', '0',
+       'Maximum permitted outstanding debt in paisa when negative balance is allowed. Zero means no debt permitted.'),
+      ('max_additional_orders', '0',
+       'Maximum number of additional orders a teacher may place beyond their balance when debt is allowed. Zero means no additional orders permitted.')
     ON CONFLICT (key) DO NOTHING
   `);
 }

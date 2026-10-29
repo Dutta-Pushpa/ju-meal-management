@@ -17,6 +17,8 @@ export interface StaffOrderRow {
   order_date: string;
   status: 'CONFIRMED' | 'COLLECTED' | 'DELIVERED' | 'CANCELLED';
   total_paisa: number;
+  alternative_item_name: string | null;
+  alternative_unit_price_paisa: number | null;
   confirmed_at: Date;
 }
 
@@ -41,6 +43,30 @@ export async function setOrderStatus(
   status: Exclude<StaffOrderRow['status'], 'CANCELLED'>,
 ): Promise<void> {
   await db.query(`UPDATE orders SET status = $2 WHERE id = $1`, [orderId, status]);
+}
+
+/** Records the delivery outcome: the actual cost of what was really delivered
+ * (and the alternative item, when one was supplied) plus who confirmed it.
+ * The order's billed total is updated to the actual cost. */
+export async function setOrderDelivered(
+  db: Queryable,
+  orderId: number,
+  input: {
+    actualCostPaisa: number;
+    alternativeItemName?: string | undefined;
+    actorId: number;
+  },
+): Promise<void> {
+  await db.query(
+    `UPDATE orders
+        SET total_paisa = $2,
+            actual_cost_paisa = $2,
+            alternative_item_name = COALESCE($3, alternative_item_name),
+            delivery_confirmed_at = now(),
+            delivery_confirmed_by = $4
+      WHERE id = $1`,
+    [orderId, input.actualCostPaisa, input.alternativeItemName ?? null, input.actorId],
+  );
 }
 
 export async function lockOrderItemStatus(db: Queryable, itemId: number) {
@@ -116,7 +142,8 @@ export async function listStaffOrders(
     `SELECT o.id, o.teacher_id, u.full_name AS teacher_name,
             o.food_location_id, l.name AS location_name,
             to_char(o.order_date, 'YYYY-MM-DD') AS order_date,
-            o.status, o.total_paisa, o.confirmed_at
+            o.status, o.total_paisa, o.confirmed_at,
+            o.alternative_item_name, o.alternative_unit_price_paisa
        FROM orders o
        JOIN users u ON u.id = o.teacher_id
        JOIN food_locations l ON l.id = o.food_location_id
@@ -147,7 +174,8 @@ export async function listAllStaffOrdersForDate(
     `SELECT o.id, o.teacher_id, u.full_name AS teacher_name,
             o.food_location_id, l.name AS location_name,
             to_char(o.order_date, 'YYYY-MM-DD') AS order_date,
-            o.status, o.total_paisa, o.confirmed_at
+            o.status, o.total_paisa, o.confirmed_at,
+            o.alternative_item_name, o.alternative_unit_price_paisa
        FROM orders o
        JOIN users u ON u.id = o.teacher_id
        JOIN food_locations l ON l.id = o.food_location_id

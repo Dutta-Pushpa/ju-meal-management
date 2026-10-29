@@ -343,6 +343,7 @@ describe('app_settings', () => {
     expect(keys).toContain('max_additional_orders');
 
     const deadline = rows.find((row) => row.key === 'order_placement_deadline');
-    expect(deadline?.value).toBe('"12:30"');
+    // value is jsonb, so pg parses the JSON string before the assertion sees it.
+    expect(deadline?.value).toBe('12:30');
   });
 });
