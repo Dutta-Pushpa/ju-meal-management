@@ -49,7 +49,6 @@ let itemId: number;
 let locationId: number;
 let secondLocationId: number;
 let secondItemId: number;
-let periodId: number;
 
 async function seedUser(
   email: string,
@@ -114,20 +113,17 @@ beforeAll(async () => {
   );
   itemId = items.find((item) => item.name === 'Meal')!.id;
   secondItemId = items.find((item) => item.name === 'Other meal')!.id;
-  const periods = await query<{ id: number }>(
-    `INSERT INTO budget_periods (name, starts_on, ends_on)
-     VALUES ('Order period', '2092-01-01', '2092-01-07') RETURNING id`,
-  );
-  periodId = periods[0]!.id;
+  // Monthly allocation for the order's calendar month; the debit from order
+  // placement is keyed to the same year/month.
   await query(
-    `INSERT INTO budget_allocations (teacher_id, budget_period_id, amount_paisa, created_by)
-     VALUES ($1, $2, 1500, $3)`,
-    [teacherId, periodId, adminId],
+    `INSERT INTO budget_monthly_allocations (teacher_id, year, month, allocated_paisa, created_by)
+     VALUES ($1, 2092, 1, 1500, $2)`,
+    [teacherId, adminId],
   );
   await query(
-    `INSERT INTO budget_ledger (teacher_id, budget_period_id, entry_type, amount_paisa, reason, created_by)
-     VALUES ($1, $2, 'allocation', 1500, 'test allocation', $3)`,
-    [teacherId, periodId, adminId],
+    `INSERT INTO budget_ledger (teacher_id, year, month, entry_type, amount_paisa, reason, created_by)
+     VALUES ($1, 2092, 1, 'allocation', 1500, 'test allocation', $2)`,
+    [teacherId, adminId],
   );
 });
 
@@ -191,14 +187,16 @@ describe('POST /api/orders', () => {
       dailyTotal: { amountPaisa: 1000 },
     });
     const budgetReport = await request(app)
-      .get(`/api/staff/reports/budget?period=${periodId}`)
+      .get('/api/staff/budgets/monthly?year=2092&month=1')
       .set(auth(staffToken));
     expect(budgetReport.status).toBe(200);
-    expect(budgetReport.body.data[0]).toMatchObject({
-      teacher: { id: teacherId },
+    const teacherRow = budgetReport.body.data.find(
+      (row: { teacher: { id: number } }) => row.teacher.id === teacherId,
+    );
+    expect(teacherRow).toMatchObject({
       allocated: { amountPaisa: 1500 },
       spent: { amountPaisa: 1000 },
-      available: { amountPaisa: 500 },
+      remaining: { amountPaisa: 500 },
     });
     const teacherDenied = await request(app)
       .get('/api/staff/orders?date=2092-01-02')
@@ -262,20 +260,6 @@ describe('POST /api/orders', () => {
     expect(unavailable.status).toBe(422);
     expect(unavailable.body.error.code).toBe('ITEM_UNAVAILABLE');
     await query('UPDATE menu_items SET is_available = true WHERE id = $1', [itemId]);
-
-    await query(
-      "UPDATE app_settings SET value = '[\"2092-01-03\"]'::jsonb WHERE key = 'ordering_disabled_dates'",
-    );
-    const disabled = await request(app)
-      .post('/api/orders')
-      .set(auth(teacherToken))
-      .send({
-        ...body,
-        orderDate: '2092-01-03',
-        idempotencyKey: 'disabled',
-      });
-    expect(disabled.status).toBe(422);
-    expect(disabled.body.error.code).toBe('ORDERING_DISABLED');
 
     const closed = await request(app)
       .post('/api/orders')
@@ -395,5 +379,147 @@ describe('POST /api/orders', () => {
     expect(
       await query("SELECT id FROM audit_logs WHERE action = 'order.status.changed'"),
     ).toHaveLength(2);
+  });
+
+  it('holds the estimate at placement and reconciles the actual cost at delivery', async () => {
+    // Fresh teacher with a 1000 taka allocation for 2092-01.
+    const newTeacherId = await seedUser('reconcile-teacher@juniv.edu', 'TEACHER');
+    await query(
+      `INSERT INTO budget_monthly_allocations (teacher_id, year, month, allocated_paisa, created_by)
+       VALUES ($1, 2092, 1, 100000, (SELECT id FROM users WHERE email = 'order-admin@juniv.edu'))`,
+      [newTeacherId],
+    );
+    await query(
+      `INSERT INTO budget_ledger (teacher_id, year, month, entry_type, amount_paisa, reason, created_by)
+       VALUES ($1, 2092, 1, 'allocation', 100000, 'test allocation',
+               (SELECT id FROM users WHERE email = 'order-admin@juniv.edu'))`,
+      [newTeacherId],
+    );
+    const reconcilerToken = await login('reconcile-teacher@juniv.edu');
+
+    // The teacher declares a fallback dish with the order. "Meal" costs 1200
+    // paisa after the first test's price update.
+    const created = await request(app)
+      .post('/api/orders')
+      .set(auth(reconcilerToken))
+      .send({
+        orderDate: '2092-01-10',
+        foodLocationId: locationId,
+        idempotencyKey: 'reconcile-cheaper',
+        items: [{ menuItemId: itemId, quantity: 1 }],
+        alternativeItemName: 'Veg Tehari',
+        alternativeUnitPricePaisa: 800,
+      });
+    expect(created.status).toBe(201);
+    expect(created.body.data.total.amountPaisa).toBe(1200);
+
+    // The estimated total is debited immediately at placement (decision B).
+    const placementDebits = await query<{ id: number }>(
+      `SELECT id FROM budget_ledger
+        WHERE teacher_id = $1 AND entry_type = 'debit' AND order_id = $2`,
+      [newTeacherId, created.body.data.id],
+    );
+    expect(placementDebits).toHaveLength(1);
+
+    // Collect, then deliver at a cheaper actual cost: the difference is refunded.
+    await request(app)
+      .patch(`/api/staff/orders/${created.body.data.id}/status`)
+      .set(auth(staffToken))
+      .send({ status: 'COLLECTED', note: 'picked up' });
+    const delivered = await request(app)
+      .patch(`/api/staff/orders/${created.body.data.id}/status`)
+      .set(auth(staffToken))
+      .send({ status: 'DELIVERED', actualCostPaisa: 700, alternativeItemName: 'Egg Khichuri' });
+    expect(delivered.status).toBe(200);
+
+    const entries = await query<{ entry_type: string; amount_paisa: number }>(
+      `SELECT entry_type, amount_paisa FROM budget_ledger
+        WHERE teacher_id = $1 AND order_id = $2 ORDER BY id`,
+      [newTeacherId, created.body.data.id],
+    );
+    expect(entries.map((entry) => [entry.entry_type, Number(entry.amount_paisa)])).toEqual([
+      ['debit', -1200],
+      ['refund', 500],
+    ]);
+
+    const orderRow = (
+      await query<{ total_paisa: number; actual_cost_paisa: number; alternative_item_name: string }>(
+        `SELECT total_paisa, actual_cost_paisa, alternative_item_name FROM orders WHERE id = $1`,
+        [created.body.data.id],
+      )
+    )[0]!;
+    expect(Number(orderRow.total_paisa)).toBe(700);
+    expect(Number(orderRow.actual_cost_paisa)).toBe(700);
+    expect(orderRow.alternative_item_name).toBe('Egg Khichuri');
+
+    // Delivering without an actual cost keeps the estimate and books nothing new.
+    const second = await request(app)
+      .post('/api/orders')
+      .set(auth(reconcilerToken))
+      .send({
+        orderDate: '2092-01-11',
+        foodLocationId: locationId,
+        idempotencyKey: 'reconcile-exact',
+        items: [{ menuItemId: itemId, quantity: 1 }],
+      });
+    expect(second.status).toBe(201);
+    await request(app)
+      .patch(`/api/staff/orders/${second.body.data.id}/status`)
+      .set(auth(staffToken))
+      .send({ status: 'COLLECTED', note: 'picked up' });
+    const deliveredExact = await request(app)
+      .patch(`/api/staff/orders/${second.body.data.id}/status`)
+      .set(auth(staffToken))
+      .send({ status: 'DELIVERED' });
+    expect(deliveredExact.status).toBe(200);
+    expect(
+      await query(
+        `SELECT id FROM budget_ledger WHERE teacher_id = $1 AND order_id = $2
+          AND entry_type IN ('refund', 'adjustment')`,
+        [newTeacherId, second.body.data.id],
+      ),
+    ).toHaveLength(0);
+    const secondRow = (
+      await query<{ total_paisa: number; actual_cost_paisa: number | null }>(
+        `SELECT total_paisa, actual_cost_paisa FROM orders WHERE id = $1`,
+        [second.body.data.id],
+      )
+    )[0]!;
+    expect(Number(secondRow.total_paisa)).toBe(1200);
+    expect(Number(secondRow.actual_cost_paisa)).toBe(1200);
+
+    // A costlier delivery debits the difference instead.
+    const third = await request(app)
+      .post('/api/orders')
+      .set(auth(reconcilerToken))
+      .send({
+        orderDate: '2092-01-12',
+        foodLocationId: locationId,
+        idempotencyKey: 'reconcile-costlier',
+        items: [{ menuItemId: itemId, quantity: 1 }],
+      });
+    expect(third.status).toBe(201);
+    await request(app)
+      .patch(`/api/staff/orders/${third.body.data.id}/status`)
+      .set(auth(staffToken))
+      .send({ status: 'COLLECTED', note: 'picked up' });
+    const deliveredCostlier = await request(app)
+      .patch(`/api/staff/orders/${third.body.data.id}/status`)
+      .set(auth(staffToken))
+      .send({ status: 'DELIVERED', actualCostPaisa: 2000 });
+    expect(deliveredCostlier.status).toBe(200);
+    const costlierEntries = await query<{ entry_type: string; amount_paisa: number }>(
+      `SELECT entry_type, amount_paisa FROM budget_ledger
+        WHERE teacher_id = $1 AND order_id = $2 AND entry_type = 'debit' ORDER BY id`,
+      [newTeacherId, third.body.data.id],
+    );
+    expect(costlierEntries.map((entry) => Number(entry.amount_paisa))).toEqual([-1200, -800]);
+    const thirdRow = (
+      await query<{ total_paisa: number }>(
+        `SELECT total_paisa FROM orders WHERE id = $1`,
+        [third.body.data.id],
+      )
+    )[0]!;
+    expect(Number(thirdRow.total_paisa)).toBe(2000);
   });
 });

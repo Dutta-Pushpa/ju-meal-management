@@ -36,6 +36,21 @@ export interface LocationControllerDeps {
 const NAME_MAX_LENGTH = 200;
 const TEXT_MAX_LENGTH = 2_000;
 
+/**
+ * Location (vendor) names are English only. Bangla names belong in the
+ * optional `nameBn` field. Starts with a letter; letters, digits, spaces and a
+ * handful of punctuation are allowed afterwards.
+ */
+export const ENGLISH_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9 .&'()-]*$/;
+
+function englishName(value: unknown, field = 'name'): string {
+  const name = requireString(value, field, { minLength: 1, maxLength: NAME_MAX_LENGTH });
+  if (!ENGLISH_NAME_PATTERN.test(name)) {
+    throw badRequest('name must use English letters — put the Bangla name in nameBn.');
+  }
+  return name;
+}
+
 /** GET /api/locations */
 export function listLocations(deps: LocationControllerDeps) {
   return async (_req: Request, res: Response): Promise<void> => {
@@ -59,7 +74,7 @@ export function createLocation(deps: LocationControllerDeps) {
     const body = readBody(req);
 
     const input: CreateLocationInput = {
-      name: requireString(body['name'], 'name', { minLength: 1, maxLength: NAME_MAX_LENGTH }),
+      name: englishName(body['name']),
       nameBn: optionalText(body['nameBn'], 'nameBn', NAME_MAX_LENGTH),
       description: optionalText(body['description'], 'description', TEXT_MAX_LENGTH),
     };
@@ -81,10 +96,7 @@ export function updateLocation(deps: LocationControllerDeps) {
     const patch: UpdateLocationInput = {};
 
     if (has(body, 'name')) {
-      patch.name = requireString(body['name'], 'name', {
-        minLength: 1,
-        maxLength: NAME_MAX_LENGTH,
-      });
+      patch.name = englishName(body['name']);
     }
     if (has(body, 'nameBn')) {
       patch.nameBn = optionalText(body['nameBn'], 'nameBn', NAME_MAX_LENGTH);

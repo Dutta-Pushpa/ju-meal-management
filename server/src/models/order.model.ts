@@ -66,7 +66,7 @@ export async function lockTeacher(db: Queryable, teacherId: number): Promise<boo
 export async function checkOrderingRules(
   db: Queryable,
   orderDate: string,
-): Promise<{ closed: boolean; disabled: boolean }> {
+): Promise<{ closed: boolean }> {
   const { rows } = await db.query<{ closed: boolean }>(
     `SELECT (now() AT TIME ZONE 'Asia/Dhaka') >=
             (($1::date +
@@ -75,7 +75,7 @@ export async function checkOrderingRules(
               )::time) AT TIME ZONE 'Asia/Dhaka') AS closed`,
     [orderDate],
   );
-  return { closed: rows[0]!.closed, disabled: false };
+  return { closed: rows[0]!.closed };
 }
 
 /**
@@ -142,63 +142,80 @@ export async function getDebtPolicy(db: Queryable): Promise<DebtPolicy> {
   };
 }
 
-export async function countNegativeOrders(
-  db: Queryable,
-  teacherId: number,
-): Promise<number> {
+/**
+ * Counts the teacher's debt-incurring orders: debit entries whose application
+ * left the all-time running balance (allocations + adjustments + debits +
+ * refunds) below zero. Teachers who stay within their balance are never
+ * counted, so the max_additional_orders cap only limits going into debt.
+ */
+export async function countDebtOrders(db: Queryable, teacherId: number): Promise<number> {
   const { rows } = await db.query<{ count: number }>(
-    `SELECT count(*)::int AS count FROM orders
-      WHERE teacher_id = $1 AND status NOT IN ('CANCELLED')`,
+    `WITH flow AS (
+        SELECT amount_paisa,
+               SUM(amount_paisa) OVER (ORDER BY created_at, id) AS running
+          FROM budget_ledger
+         WHERE teacher_id = $1
+      )
+      SELECT count(*)::int AS count FROM flow
+       WHERE amount_paisa < 0 AND running < 0`,
     [teacherId],
   );
   return rows[0]?.count ?? 0;
 }
 
+/** Per-teacher extra debt headroom (paisa) granted on top of the global policy. */
+export async function getTeacherDebtAllowance(
+  db: Queryable,
+  teacherId: number,
+): Promise<number> {
+  const { rows } = await db.query<{ debt_allowance_paisa: number }>(
+    `SELECT debt_allowance_paisa FROM users WHERE id = $1`,
+    [teacherId],
+  );
+  return Number(rows[0]?.debt_allowance_paisa ?? 0);
+}
+
 export async function getAvailableBalance(
   db: Queryable,
   teacherId: number,
-  periodId?: number,
-  year?: number,
-  month?: number,
+  year: number,
+  month: number,
 ): Promise<number> {
-  // If year & month are specified, check monthly allocation first
-  if (year !== undefined && month !== undefined) {
-    const monthly = await db.query<{ amount_paisa: number }>(
-      `SELECT COALESCE(SUM(a.allocated_paisa), 0) + COALESCE(SUM(a.carried_forward_paisa), 0)
-              + COALESCE(SUM(l.amount_paisa), 0)::bigint AS amount_paisa
-         FROM budget_monthly_allocations a
-         LEFT JOIN budget_ledger l
-           ON l.teacher_id = a.teacher_id
-          AND l.year = a.year
-          AND l.month = a.month
-        WHERE a.teacher_id = $1 AND a.year = $2 AND a.month = $3
-        GROUP BY a.id`,
-      [teacherId, year, month],
-    );
-    if (monthly.rows.length > 0 && monthly.rows[0]) {
-      return Number(monthly.rows[0].amount_paisa);
-    }
-  }
-
-  // Fallback or period-based ledger calculation
-  if (periodId !== undefined) {
-    const { rows } = await db.query<{ amount_paisa: number }>(
-      `SELECT COALESCE(SUM(amount_paisa), 0)::bigint AS amount_paisa
-         FROM budget_ledger
-        WHERE teacher_id = $1 AND budget_period_id = $2`,
-      [teacherId, periodId],
-    );
-    if (rows.length > 0 && rows[0]) {
-      return Number(rows[0].amount_paisa);
-    }
-  }
-
-  // Global ledger balance fallback
+  // Canonical monthly balance: base allocation for the month, plus carry-forward
+  // from every previous month (base allocations + non-allocation ledger
+  // activity), plus this month's non-allocation ledger activity. Unused budget
+  // rolls forward and overdrafts roll forward too. 'allocation' ledger entries
+  // are excluded everywhere because the budget_monthly_allocations row is the
+  // source of truth for the base amount.
   const { rows } = await db.query<{ amount_paisa: number }>(
-    `SELECT COALESCE(SUM(amount_paisa), 0)::bigint AS amount_paisa
-       FROM budget_ledger
-      WHERE teacher_id = $1`,
-    [teacherId],
+    `WITH cur AS (
+       SELECT COALESCE(SUM(l.amount_paisa), 0) AS total
+         FROM budget_ledger l
+        WHERE l.teacher_id = $1 AND l.year = $2 AND l.month = $3
+          AND l.entry_type <> 'allocation'
+     ),
+     prior_ledger AS (
+       SELECT COALESCE(SUM(l.amount_paisa), 0) AS total
+         FROM budget_ledger l
+        WHERE l.teacher_id = $1
+          AND l.year IS NOT NULL AND l.month IS NOT NULL
+          AND (l.year < $2 OR (l.year = $2 AND l.month < $3))
+          AND l.entry_type <> 'allocation'
+     ),
+     prior_alloc AS (
+       SELECT COALESCE(SUM(a.allocated_paisa), 0) AS total
+         FROM budget_monthly_allocations a
+        WHERE a.teacher_id = $1
+          AND (a.year < $2 OR (a.year = $2 AND a.month < $3))
+     )
+     SELECT (COALESCE(ma.allocated_paisa, 0)
+            + (SELECT total FROM cur)
+            + (SELECT total FROM prior_ledger)
+            + (SELECT total FROM prior_alloc))::bigint AS amount_paisa
+       FROM (SELECT 1) one
+       LEFT JOIN budget_monthly_allocations ma
+              ON ma.teacher_id = $1 AND ma.year = $2 AND ma.month = $3`,
+    [teacherId, year, month],
   );
   return Number(rows[0]?.amount_paisa ?? 0);
 }
@@ -302,11 +319,11 @@ export async function createDebit(
   db: Queryable,
   input: {
     teacherId: number;
-    periodId: number;
+    periodId?: number | undefined;
     orderId: number;
     totalPaisa: number;
-    year?: number;
-    month?: number;
+    year?: number | undefined;
+    month?: number | undefined;
   },
 ): Promise<void> {
   await db.query(
@@ -315,7 +332,7 @@ export async function createDebit(
      VALUES ($1, $2, 'debit', $3, $4, 'Meal order', $1, $5, $6)`,
     [
       input.teacherId,
-      input.periodId,
+      input.periodId ?? null,
       -input.totalPaisa,
       input.orderId,
       input.year ?? null,
@@ -456,10 +473,32 @@ export async function findOrderBudgetPeriod(
 ): Promise<number | undefined> {
   const { rows } = await db.query<{ budget_period_id: number }>(
     `SELECT budget_period_id FROM budget_ledger
-      WHERE order_id = $1 AND entry_type = 'debit' LIMIT 1`,
+       WHERE order_id = $1 AND entry_type = 'debit' LIMIT 1`,
     [orderId],
   );
   return rows[0]?.budget_period_id;
+}
+
+export interface OrderDebitRecord {
+  id: number;
+  budget_period_id: number | null;
+  year: number | null;
+  month: number | null;
+}
+
+/** The debit ledger row created for an order, if one exists. Refunds reuse the
+ * debit's year/month so the money returns to the same budget month. */
+export async function findOrderDebitRecord(
+  db: Queryable,
+  orderId: number,
+): Promise<OrderDebitRecord | undefined> {
+  const { rows } = await db.query<OrderDebitRecord>(
+    `SELECT id, budget_period_id, year, month FROM budget_ledger
+       WHERE order_id = $1 AND entry_type = 'debit'
+       ORDER BY id DESC LIMIT 1`,
+    [orderId],
+  );
+  return rows[0];
 }
 
 export async function cancelOrder(db: Queryable, orderId: number): Promise<void> {
@@ -474,7 +513,9 @@ export async function insertRefund(
   db: Queryable,
   input: {
     teacherId: number;
-    periodId: number;
+    periodId?: number | undefined;
+    year?: number | undefined;
+    month?: number | undefined;
     orderId: number;
     amountPaisa: number;
     reason: string;
@@ -483,11 +524,13 @@ export async function insertRefund(
 ): Promise<void> {
   await db.query(
     `INSERT INTO budget_ledger
-       (teacher_id, budget_period_id, entry_type, amount_paisa, order_id, reason, created_by)
-     VALUES ($1, $2, 'refund', $3, $4, $5, $6)`,
+       (teacher_id, budget_period_id, year, month, entry_type, amount_paisa, order_id, reason, created_by)
+     VALUES ($1, $2, $3, $4, 'refund', $5, $6, $7, $8)`,
     [
       input.teacherId,
-      input.periodId,
+      input.periodId ?? null,
+      input.year ?? null,
+      input.month ?? null,
       input.amountPaisa,
       input.orderId,
       input.reason,

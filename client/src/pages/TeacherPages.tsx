@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
-import { api, asMessage, todayInDhaka } from '../api';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { api, asMessage, currentDhakaMonth, todayInDhaka } from '../api';
 import type {
-  BudgetPeriod,
+  BudgetRequest,
   BudgetSummary,
   LedgerEntry,
   Location,
@@ -25,13 +25,14 @@ import {
   Textarea,
 } from '../ui';
 
-function currentPeriod(periods: BudgetPeriod[]): BudgetPeriod | undefined {
-  const today = todayInDhaka();
-  return (
-    periods.find((p) => p.isActive && p.startsOn <= today && p.endsOn >= today) ??
-    periods.find((p) => p.isActive)
-  );
+/** Split 'YYYY-MM' (from a month input) into numeric year and month. */
+function splitMonth(monthValue: string): { year: number; month: number } {
+  const [year, month] = monthValue.split('-').map(Number);
+  return { year: year ?? new Date().getFullYear(), month: month ?? new Date().getMonth() + 1 };
 }
+
+/** Balances below this (100 taka) trigger the low-balance warning. */
+const LOW_BALANCE_PAISA = 10000;
 
 export function TeacherOverview({
   token,
@@ -42,7 +43,6 @@ export function TeacherOverview({
   user: User;
   onNavigate: (view: string) => void;
 }) {
-  const [periods, setPeriods] = useState<BudgetPeriod[]>([]);
   const [budget, setBudget] = useState<BudgetSummary | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [error, setError] = useState('');
@@ -54,16 +54,12 @@ export function TeacherOverview({
       setLoading(true);
       setError('');
       try {
-        const list = await api<BudgetPeriod[]>('/teacher/budget-periods', { token });
-        const period = currentPeriod(list);
+        // The monthly summary defaults to the current Dhaka month on the API.
         const [orderData, budgetData] = await Promise.all([
           api<Order[]>('/orders/mine?pageSize=5', { token }),
-          period
-            ? api<BudgetSummary>(`/teacher/budget?period=${period.id}`, { token })
-            : Promise.resolve(null),
+          api<BudgetSummary>('/teacher/budget', { token }),
         ]);
         if (!cancelled) {
-          setPeriods(list);
           setOrders(orderData);
           setBudget(budgetData);
         }
@@ -84,10 +80,26 @@ export function TeacherOverview({
       <PageHeader
         eyebrow="TEACHER PORTAL"
         title={`Good ${getGreeting()}, ${user.fullName.split(' ')[0]}`}
-        description="Your weekly meals, budget and recent orders in one place."
+        description="Your monthly meals, budget and recent orders in one place."
         action={<Button onClick={() => onNavigate('meals')}>＋ Order a meal</Button>}
       />
       {error && <Alert>{error}</Alert>}
+      {!loading &&
+        budget &&
+        budget.available.amountPaisa >= 0 &&
+        budget.available.amountPaisa < LOW_BALANCE_PAISA && (
+          <Alert>
+            ⚠ Low balance: you have {budget.available.amountFormatted} remaining for{' '}
+            {budget.period.name}. Requests above this amount may be declined unless debt is
+            allowed by policy.
+          </Alert>
+        )}
+      {!loading && budget && budget.available.amountPaisa < 0 && (
+        <Alert>
+          ⚠ Outstanding debt: your balance is {budget.available.amountFormatted}. Further orders
+          may be blocked by policy until the balance is restored.
+        </Alert>
+      )}
       {loading ? (
         <Loading />
       ) : (
@@ -96,21 +108,26 @@ export function TeacherOverview({
             <StatCard
               label="Available balance"
               value={budget?.available.amountFormatted ?? '—'}
-              detail={
-                budget ? `${budget.period.name} · remaining to spend` : 'No active budget period'
-              }
-              tone="violet"
+              detail={budget ? `${budget.period.name} · remaining to spend` : 'No monthly budget yet'}
+              tone={budget && budget.available.amountPaisa < 0 ? 'orange' : 'violet'}
               symbol="৳"
             />
             <StatCard
-              label="Allocated this period"
+              label="Allocated this month"
               value={budget?.allocated.amountFormatted ?? '—'}
-              detail="Weekly allocation"
+              detail="Monthly allocation (may include edits)"
               tone="blue"
               symbol="↗"
             />
             <StatCard
-              label="Spent this period"
+              label="Carried forward"
+              value={budget?.carryForward.amountFormatted ?? '—'}
+              detail="From previous months"
+              tone={budget && budget.carryForward.amountPaisa < 0 ? 'orange' : 'blue'}
+              symbol="↺"
+            />
+            <StatCard
+              label="Spent this month"
               value={budget?.spent.amountFormatted ?? '—'}
               detail="Confirmed meal orders"
               tone="orange"
@@ -190,15 +207,6 @@ export function TeacherOverview({
               </button>
             </Card>
           </div>
-          {!currentPeriod(periods) && (
-            <Alert tone="info">
-              {periods.length === 0
-                ? 'There are no budget periods in the database yet.'
-                : 'There is no active budget period.'}{' '}
-              Ask an administrator to create or activate the current period and allocate your
-              budget.
-            </Alert>
-          )}
         </>
       )}
     </>
@@ -222,6 +230,23 @@ export function TeacherMeals({
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [search, setSearch] = useState('');
+  const [alternativeName, setAlternativeName] = useState('');
+  const [alternativePrice, setAlternativePrice] = useState('');
+  const [budget, setBudget] = useState<BudgetSummary | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api<BudgetSummary>('/teacher/budget', { token })
+      .then((data) => {
+        if (!cancelled) setBudget(data);
+      })
+      .catch(() => {
+        /* A missing budget should not block ordering; the API enforces limits. */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
 
   useEffect(() => {
     let cancelled = false;
@@ -286,6 +311,11 @@ export function TeacherMeals({
 
   async function submitOrder() {
     if (!locationId || !cartItems.length) return;
+    const alternativeTaka = Number.parseFloat(alternativePrice);
+    if (alternativeName.trim() && (!Number.isFinite(alternativeTaka) || alternativeTaka <= 0)) {
+      setError('Enter a positive price for the alternative item, or leave it blank.');
+      return;
+    }
     setSubmitting(true);
     setError('');
     setSuccess('');
@@ -306,11 +336,19 @@ export function TeacherMeals({
             quantity: cart[item.id],
             notes: notes[item.id] || undefined,
           })),
+          ...(alternativeName.trim() && Number.isFinite(alternativeTaka) && alternativeTaka > 0
+            ? {
+                alternativeItemName: alternativeName.trim(),
+                alternativeUnitPricePaisa: Math.round(alternativeTaka * 100),
+              }
+            : {}),
         },
       });
       setSuccess(`Order #${order.id} confirmed. Total: ${order.total.amountFormatted}.`);
       setCart({});
       setNotes({});
+      setAlternativeName('');
+      setAlternativePrice('');
       onOrderPlaced();
     } catch (e) {
       setError(asMessage(e));
@@ -331,6 +369,19 @@ export function TeacherMeals({
       {success && (
         <Alert tone="success" onClose={() => setSuccess('')}>
           {success}
+        </Alert>
+      )}
+      {budget &&
+        budget.available.amountPaisa >= 0 &&
+        budget.available.amountPaisa < LOW_BALANCE_PAISA && (
+          <Alert>
+            ⚠ Low balance: only {budget.available.amountFormatted} remains for{' '}
+            {budget.period.name}.
+          </Alert>
+        )}
+      {budget && budget.available.amountPaisa < 0 && (
+        <Alert>
+          ⚠ Outstanding debt: your balance is {budget.available.amountFormatted}.
         </Alert>
       )}
       {loading ? (
@@ -470,9 +521,30 @@ export function TeacherMeals({
               <span>Estimated total</span>
               <strong>{`৳${(totalPaisa / 100).toLocaleString('en-BD', { minimumFractionDigits: 2 })}`}</strong>
             </div>
+            <div className="alternative-fields">
+              <Field label="Alternative item (optional)">
+                <Input
+                  value={alternativeName}
+                  onChange={(e) => setAlternativeName(e.target.value)}
+                  placeholder="If your first choice is unavailable"
+                  aria-label="Alternative item name"
+                />
+              </Field>
+              <Field label="Alternative price (৳)">
+                <Input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={alternativePrice}
+                  onChange={(e) => setAlternativePrice(e.target.value)}
+                  placeholder="e.g. 80"
+                  aria-label="Alternative item price in taka"
+                />
+              </Field>
+            </div>
             <p className="cart-note">
               Final prices and available balance are verified by the server at checkout. Ordering
-              cutoff rules are enforced by the API.
+              cutoff rules are enforced by the API. The actual cost is settled at delivery.
             </p>
             <Button
               block
@@ -663,34 +735,14 @@ export function TeacherOrders({ token, onChanged }: { token: string; onChanged: 
 }
 
 export function TeacherBudget({ token }: { token: string }) {
-  const [periods, setPeriods] = useState<BudgetPeriod[]>([]);
-  const [periodId, setPeriodId] = useState('');
+  const [month, setMonth] = useState(currentDhakaMonth());
   const [budget, setBudget] = useState<BudgetSummary | null>(null);
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
-  const [loadingPeriods, setLoadingPeriods] = useState(true);
   const [loadingData, setLoadingData] = useState(false);
   const [error, setError] = useState('');
+  const { year, month: monthNumber } = splitMonth(month);
   useEffect(() => {
-    let cancelled = false;
-    api<BudgetPeriod[]>('/teacher/budget-periods', { token })
-      .then((list) => {
-        if (cancelled) return;
-        setPeriods(list);
-        const active = currentPeriod(list);
-        if (active) setPeriodId(String(active.id));
-      })
-      .catch((e) => {
-        if (!cancelled) setError(asMessage(e));
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingPeriods(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [token]);
-  useEffect(() => {
-    if (!periodId) {
+    if (!month) {
       setBudget(null);
       setLedger([]);
       return;
@@ -701,8 +753,11 @@ export function TeacherBudget({ token }: { token: string }) {
     setBudget(null);
     setLedger([]);
     Promise.all([
-      api<BudgetSummary>(`/teacher/budget?period=${periodId}`, { token }),
-      api<LedgerEntry[]>(`/teacher/budget/ledger?period=${periodId}&perPage=100`, { token }),
+      api<BudgetSummary>(`/teacher/budget?year=${year}&month=${monthNumber}`, { token }),
+      api<LedgerEntry[]>(
+        `/teacher/budget/ledger?year=${year}&month=${monthNumber}&perPage=100`,
+        { token },
+      ),
     ])
       .then(([summary, entries]) => {
         if (!cancelled) {
@@ -719,7 +774,7 @@ export function TeacherBudget({ token }: { token: string }) {
     return () => {
       cancelled = true;
     };
-  }, [token, periodId]);
+  }, [token, month, year, monthNumber]);
   return (
     <>
       <PageHeader
@@ -727,78 +782,67 @@ export function TeacherBudget({ token }: { token: string }) {
         title="My meal budget"
         description="All amounts are retrieved from the budget ledger maintained by the server."
         action={
-          <Select
-            value={periodId}
-            disabled={loadingPeriods || !periods.length}
-            onChange={(e) => setPeriodId(e.target.value)}
-            aria-label="Choose budget period"
-          >
-            {periods.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name} · {p.startsOn} – {p.endsOn}
-              </option>
-            ))}
-          </Select>
+          <Input
+            type="month"
+            max={currentDhakaMonth()}
+            value={month}
+            onChange={(e) => setMonth(e.target.value)}
+            aria-label="Choose budget month"
+          />
         }
       />
       {error && <Alert>{error}</Alert>}
-      {loadingPeriods || loadingData ? (
+      {loadingData ? (
         <Loading />
-      ) : !periods.length ? (
-        <Empty
-          title="No budget periods yet"
-          detail="An administrator must create a budget period and allocation before you can use the meal service."
-        />
       ) : budget ? (
         <>
+          {budget && !budget.hasAllocation && (
+            <Alert tone="info">
+              No budget has been allocated to you for {budget.period.name} yet. Ask an
+              administrator to allocate your monthly meal budget.
+            </Alert>
+          )}
           <div className="stat-grid">
             <StatCard
               label="Available"
               value={budget.available.amountFormatted}
-              detail="Ledger balance"
-              tone="green"
+              detail={budget.period.name}
+              tone={budget.available.amountPaisa < 0 ? 'orange' : 'green'}
               symbol="৳"
             />
             <StatCard
               label="Allocated"
               value={budget.allocated.amountFormatted}
-              detail="Budget assigned"
+              detail={budget.allocated.amountPaisa === 0 ? 'Not allocated yet' : 'Budget assigned'}
               tone="violet"
               symbol="↗"
             />
             <StatCard
-              label="Spent"
-              value={budget.spent.amountFormatted}
-              detail="Order debits"
-              tone="orange"
-              symbol="↘"
+              label="Carried forward"
+              value={budget.carryForward.amountFormatted}
+              detail="From previous months"
+              tone={budget.carryForward.amountPaisa < 0 ? 'orange' : 'blue'}
+              symbol="↺"
             />
             <StatCard
-              label="Refunded / adjusted"
-              value={
-                (budget.refunded.amountPaisa + budget.adjusted.amountPaisa >= 0 ? '৳' : '−৳') +
-                (Math.abs(budget.refunded.amountPaisa + budget.adjusted.amountPaisa) / 100).toFixed(
-                  2,
-                )
-              }
-              detail="Credits and adjustments"
-              tone="blue"
-              symbol="↺"
+              label="Spent"
+              value={budget.spent.amountFormatted}
+              detail="Confirmed meal orders"
+              tone="orange"
+              symbol="↘"
             />
           </div>
           <Card>
             <div className="card-heading">
               <div>
                 <h2>Budget ledger</h2>
-                <p>
-                  {budget.period.name} · {budget.period.startsOn} to {budget.period.endsOn}
-                </p>
+                <p>{budget.period.name} activity</p>
               </div>
               <span className="record-count">{ledger.length} entries</span>
             </div>
             {ledger.length === 0 ? (
               <Empty
-                title="No transactions in this period"
+                title="No transactions in this month"
                 detail="Allocations, meal orders and refunds will appear here."
               />
             ) : (
@@ -837,11 +881,148 @@ export function TeacherBudget({ token }: { token: string }) {
         </>
       ) : (
         <Empty
-          title="Select a budget period"
-          detail="Choose a period above to view the ledger and balance for that period."
+          title="No budget data yet"
+          detail="Once a budget is allocated to you, the ledger and balance appear here."
         />
       )}
+      {!loadingData && <TeacherBudgetRequests token={token} />}
     </>
+  );
+}
+
+/** Request a budget increase or extra debt allowance, and track the decision. */
+export function TeacherBudgetRequests({ token }: { token: string }) {
+  const [requests, setRequests] = useState<BudgetRequest[]>([]);
+  const [requestType, setRequestType] = useState<'budget_increase' | 'debt_allowance'>(
+    'budget_increase',
+  );
+  const [amount, setAmount] = useState('');
+  const [reason, setReason] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  async function load() {
+    try {
+      setRequests(await api<BudgetRequest[]>('/teacher/budget-requests?perPage=20', { token }));
+    } catch (e) {
+      setError(asMessage(e));
+    }
+  }
+
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    const taka = Number.parseFloat(amount);
+    if (!Number.isFinite(taka) || taka <= 0) {
+      setError('Enter a valid positive amount in taka.');
+      return;
+    }
+    setSubmitting(true);
+    setError('');
+    setSuccess('');
+    try {
+      await api('/teacher/budget-requests', {
+        token,
+        method: 'POST',
+        body: {
+          requestType,
+          amountPaisa: Math.round(taka * 100),
+          reason,
+        },
+      });
+      setSuccess('Request submitted. An administrator will review it soon.');
+      setAmount('');
+      setReason('');
+      await load();
+    } catch (err) {
+      setError(asMessage(err));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Card>
+      <div className="card-heading">
+        <div>
+          <h2>Budget requests</h2>
+          <p>Ask for more budget or permission to go into debt</p>
+        </div>
+        <span className="record-count">{requests.length} requests</span>
+      </div>
+      {error && <Alert>{error}</Alert>}
+      {success && (
+        <Alert tone="success" onClose={() => setSuccess('')}>
+          {success}
+        </Alert>
+      )}
+      <form className="request-form" onSubmit={(e) => void submit(e)}>
+        <Field label="Request type">
+          <Select value={requestType} onChange={(e) => setRequestType(e.target.value as typeof requestType)}>
+            <option value="budget_increase">Budget increase (adds to this month's budget)</option>
+            <option value="debt_allowance">Debt allowance (extra permitted debt)</option>
+          </Select>
+        </Field>
+        <Field label="Amount (৳)">
+          <Input
+            type="number"
+            min="1"
+            step="0.01"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            placeholder="500"
+            required
+          />
+        </Field>
+        <Field label="Reason">
+          <Textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Why do you need this?"
+            rows={2}
+            required
+          />
+        </Field>
+        <Button disabled={submitting}>
+          <span>{submitting ? 'Submitting…' : 'Submit request'}</span>
+        </Button>
+      </form>
+      {requests.length === 0 ? (
+        <Empty title="No requests yet" detail="Submitted requests and their status appear here." />
+      ) : (
+        <TableWrap>
+          <thead>
+            <tr>
+              <th>Type</th>
+              <th>Amount</th>
+              <th>Reason</th>
+              <th>Status</th>
+              <th>Submitted</th>
+            </tr>
+          </thead>
+          <tbody>
+            {requests.map((request) => (
+              <tr key={request.id}>
+                <td>
+                  {request.requestType === 'budget_increase' ? 'Budget increase' : 'Debt allowance'}
+                </td>
+                <td>{request.amount.amountFormatted}</td>
+                <td>{request.reason}</td>
+                <td>
+                  <StatusPill status={request.status.toUpperCase()} />
+                </td>
+                <td>{new Date(request.createdAt).toLocaleString()}</td>
+              </tr>
+            ))}
+          </tbody>
+        </TableWrap>
+      )}
+    </Card>
   );
 }
 

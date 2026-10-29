@@ -10,7 +10,7 @@ import {
   register,
   type AuthControllerDeps,
 } from '../controllers/auth.controller.js';
-import { requireAuth, requireRole, requireRoleWithPermission } from '../middleware/auth.js';
+import { requireAuth, requireRole, optionalAuth } from '../middleware/auth.js';
 
 /**
  * Authentication routes.
@@ -64,14 +64,13 @@ export function createAuthRouter(deps: {
   });
 
   if (deps.allowSelfRegistration) {
-    router.post('/register', register(controllerDeps));
+    // Attach req.auth when a token is supplied, so a signed-in administrator
+    // can create ADMIN accounts from the user panel without the shared admin
+    // key. Anonymous registration keeps the admin-key gate for ADMIN.
+    router.post('/register', optionalAuth(auth), register(controllerDeps));
   } else {
-    router.post(
-      '/register',
-      requireAuth(auth),
-      requireRoleWithPermission(['STAFF'], 'users:create'),
-      register(controllerDeps),
-    );
+    // User creation is admin-only under the role-only access model.
+    router.post('/register', requireAuth(auth), requireRole('ADMIN'), register(controllerDeps));
   }
   router.post('/login', loginLimiter, login(controllerDeps));
   router.post('/logout', requireAuth(auth), logout(controllerDeps));

@@ -6,12 +6,12 @@ import {
   listManagedMenuItems,
   updateMenuItem,
 } from '../controllers/menu.controller.js';
-import { requireAuth, requireRoleWithPermission } from '../middleware/auth.js';
+import { requireAuth, requireRole } from '../middleware/auth.js';
 
 export function createMenuAdminRouter(deps: { db: Database; jwtSecret: string }): Router {
   const router = Router();
   const auth = { db: deps.db, jwtSecret: deps.jwtSecret };
-  const canManage = requireRoleWithPermission(['STAFF'], 'menu_items:manage');
+  const canManage = requireRole('STAFF', 'ADMIN');
 
   router.get('/', requireAuth(auth), canManage, listManagedMenuItems(deps.db));
   router.post('/', requireAuth(auth), canManage, createMenuItem(deps.db));

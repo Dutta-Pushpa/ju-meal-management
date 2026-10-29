@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express';
 import type { Database } from '../db/pool.js';
 import { currentUser } from '../middleware/auth.js';
-import { badRequest, forbidden } from '../utils/errors.js';
+import { badRequest } from '../utils/errors.js';
 import {
   requireEnum,
   requireInt,
@@ -36,12 +36,28 @@ export function createOrder(deps: { db: Database }) {
         notes: optionalNotes(line['notes'], `items[${index}].notes`),
       };
     });
+    // Optional fallback dish: what the teacher accepts if their first choice is
+    // unavailable. Name and price must be provided together.
+    let alternativeItemName: string | null = null;
+    let alternativeUnitPricePaisa: number | null = null;
+    if (body['alternativeItemName'] !== undefined || body['alternativeUnitPricePaisa'] !== undefined) {
+      alternativeItemName = requireString(body['alternativeItemName'], 'alternativeItemName', {
+        maxLength: 200,
+      });
+      alternativeUnitPricePaisa = requireInt(
+        body['alternativeUnitPricePaisa'],
+        'alternativeUnitPricePaisa',
+        { min: 1 },
+      );
+    }
     const result = await placeOrder(deps.db, {
       teacherId: actor.id,
       orderDate: requireBusinessDate(body['orderDate'], 'orderDate'),
       foodLocationId: requireInt(body['foodLocationId'], 'foodLocationId', { min: 1 }),
       idempotencyKey: requireString(body['idempotencyKey'], 'idempotencyKey', { maxLength: 200 }),
       items,
+      alternativeItemName,
+      alternativeUnitPricePaisa,
     });
     res
       .status(result.replayed ? 200 : 201)
@@ -82,13 +98,9 @@ export function getMyOrderById(db: Database) {
 export function cancelOrder(deps: { db: Database }) {
   return async (req: Request, res: Response): Promise<void> => {
     const actor = currentUser(req);
-    if (
-      actor.role !== 'TEACHER' &&
-      actor.role !== 'ADMIN' &&
-      !(actor.role === 'STAFF' && actor.permissions.includes('orders:cancel'))
-    ) {
-      throw forbidden('You do not have permission to cancel this order.');
-    }
+    // Role-only access: staff and admin may cancel any order; teachers may
+    // cancel their own (enforced in the service). The TEACHER/STAFF/ADMIN role
+    // claim is validated at authentication, so no further check is needed.
     const body = requireObject(req.body ?? {}, 'body');
     const reason =
       body['reason'] === undefined

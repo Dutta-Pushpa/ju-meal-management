@@ -2,8 +2,17 @@ import type { Request, Response } from 'express';
 import type { Database } from '../db/pool.js';
 import { badRequest } from '../utils/errors.js';
 import { requireInt, requireString } from '../utils/validation.js';
-import { getBudgetReport, getDailyReport } from '../services/staff-report.service.js';
-import { presentBudgetReport, presentDailyReport } from '../views/staff-report.view.js';
+import {
+  getBudgetReport,
+  getDailyReport,
+  getMonthlyTeacherReport,
+} from '../services/staff-report.service.js';
+import {
+  presentBudgetReport,
+  presentDailyReport,
+  presentMonthlyTeacherReport,
+} from '../views/staff-report.view.js';
+import { readYearMonth } from './budget-admin.controller.js';
 
 export function dailyReport(db: Database) {
   return async (req: Request, res: Response): Promise<void> => {
@@ -24,6 +33,15 @@ export function budgetReport(db: Database) {
       max: Number.MAX_SAFE_INTEGER,
     });
     res.status(200).json(presentBudgetReport(await getBudgetReport(db, periodId)));
+  };
+}
+
+/** GET /staff/reports/monthly?year&month — six-month per-teacher report. */
+export function monthlyReport(db: Database) {
+  return async (req: Request, res: Response): Promise<void> => {
+    const { year, month } = readYearMonth(req.query);
+    const months = await getMonthlyTeacherReport(db, year, month);
+    res.status(200).json({ data: presentMonthlyTeacherReport(months) });
   };
 }
 

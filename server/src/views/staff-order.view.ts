@@ -13,6 +13,10 @@ export function presentStaffOrder(row: StaffOrderRow, items: OrderItemRow[]) {
     orderDate: row.order_date,
     status: row.status,
     total: money(row.total_paisa),
+    alternativeItemName: row.alternative_item_name,
+    alternativeUnitPrice: row.alternative_unit_price_paisa
+      ? money(row.alternative_unit_price_paisa)
+      : null,
     items: items.map((item) => ({ name: item.item_name_snapshot, quantity: item.quantity })),
     confirmedAt: row.confirmed_at.toISOString(),
   };

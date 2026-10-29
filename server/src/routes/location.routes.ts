@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import type { Database } from '../db/pool.js';
-import { requireAuth, requireRoleWithPermission } from '../middleware/auth.js';
+import { requireAuth, requireRole } from '../middleware/auth.js';
 import {
   createLocation,
   deleteLocation,
@@ -16,10 +16,7 @@ import { getMenu } from '../controllers/menu.controller.js';
  * Food-location routes.
  *
  * Reading is open to any signed-in user. Creating, updating, and deactivating
- * are administrative: ADMIN, or STAFF holding the `locations:manage` permission.
- * The guard is `requireRoleWithPermission`, which lets an ADMIN through always
- * and otherwise requires the permission, so a staff account limited to
- * collection work cannot edit vendors.
+ * are operational: ADMIN, or STAFF (role-only access control).
  */
 export const TIMEZONE = 'Asia/Dhaka';
 
@@ -35,7 +32,7 @@ export function createLocationRouter(deps: {
     timezone: TIMEZONE,
   };
 
-  const canManage = requireRoleWithPermission(['STAFF'], 'locations:manage');
+  const canManage = requireRole('STAFF', 'ADMIN');
 
   router.get('/', requireAuth(auth), listLocations(controllerDeps));
   router.get('/manage/all', requireAuth(auth), canManage, listAllManagedLocations(controllerDeps));

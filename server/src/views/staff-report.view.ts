@@ -9,9 +9,25 @@ export function presentDailyReport(result: {
   date: string;
   locations: DailyLocationTotal[];
   dailyTotalPaisa: number;
+  statusSummary: {
+    total: number;
+    pending: number;
+    processing: number;
+    delivered: number;
+    cancelled: number;
+    spendingOnDeliveredPaisa: number;
+  };
 }) {
   return {
     date: result.date,
+    statusSummary: {
+      total: result.statusSummary.total,
+      pending: result.statusSummary.pending,
+      processing: result.statusSummary.processing,
+      delivered: result.statusSummary.delivered,
+      cancelled: result.statusSummary.cancelled,
+      spendingOnDelivered: money(result.statusSummary.spendingOnDeliveredPaisa),
+    },
     locations: result.locations.map((row) => ({
       location: { id: row.location_id!, name: row.location_name! },
       orderCount: row.order_count,
@@ -32,5 +48,54 @@ export function presentBudgetReport(rows: TeacherBudgetReportRow[]) {
       available: money(row.available_paisa),
     })),
     meta: { total: rows.length },
+  };
+}
+
+export function presentMonthlyTeacherReport(
+  months: Array<{
+    year: number;
+    month: number;
+    label: string;
+    teachers: Array<{
+      teacherId: number;
+      teacherName: string;
+      allocatedPaisa: number;
+      adjustedPaisa: number;
+      carryForwardPaisa: number;
+      spentPaisa: number;
+      refundedPaisa: number;
+      remainingPaisa: number;
+      totalOrders: number;
+      pendingOrders: number;
+      processingOrders: number;
+      deliveredOrders: number;
+      cancelledOrders: number;
+      deliveredSpendingPaisa: number;
+    }>;
+  }>,
+) {
+  return {
+    months: months.map((month) => ({
+      year: month.year,
+      month: month.month,
+      label: month.label,
+      teachers: month.teachers.map((teacher) => ({
+        teacher: { id: teacher.teacherId, fullName: teacher.teacherName },
+        allocated: money(teacher.allocatedPaisa),
+        adjusted: money(teacher.adjustedPaisa),
+        carryForward: money(teacher.carryForwardPaisa),
+        spent: money(teacher.spentPaisa),
+        refunded: money(teacher.refundedPaisa),
+        remaining: money(teacher.remainingPaisa),
+        orders: {
+          total: teacher.totalOrders,
+          pending: teacher.pendingOrders,
+          processing: teacher.processingOrders,
+          delivered: teacher.deliveredOrders,
+          cancelled: teacher.cancelledOrders,
+          deliveredSpending: money(teacher.deliveredSpendingPaisa),
+        },
+      })),
+    })),
   };
 }

@@ -147,22 +147,19 @@ describe('GET /api/locations/:id/menu', () => {
 });
 
 describe('menu item administration', () => {
-  it('allows an admin or permitted staff member, and rejects other callers', async () => {
+  it('allows an admin and any staff member (role-only access), and rejects other callers', async () => {
     const body = { foodLocationId: locationId, name: unique('Item'), pricePaisa: 9000 };
     const denied = await request(app)
       .post('/api/staff/menu-items')
       .set(auth(teacherToken))
       .send(body);
     expect(denied.status).toBe(403);
-    const restricted = await request(app)
-      .post('/api/staff/menu-items')
-      .set(auth(noPermissionToken))
-      .send(body);
-    expect(restricted.status).toBe(403);
 
+    // Role-only access: every staff member may manage menu items, regardless
+    // of any legacy stored permission list.
     const created = await request(app)
       .post('/api/staff/menu-items')
-      .set(auth(managerToken))
+      .set(auth(noPermissionToken))
       .send(body);
     expect(created.status).toBe(201);
     expect(created.body.data).toMatchObject({

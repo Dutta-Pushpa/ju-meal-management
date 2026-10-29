@@ -169,20 +169,6 @@ export async function setUserActive(
   return rows[0];
 }
 
-export async function updateUserRoleAndPermissions(
-  db: Queryable,
-  userId: number,
-  role: Role,
-  permissions: Permission[],
-): Promise<UserRow | undefined> {
-  const { rows } = await db.query<UserRow>(
-    `UPDATE users SET role = $2, permissions = $3::jsonb WHERE id = $1 RETURNING ${USER_COLUMNS}`,
-    [userId, role, JSON.stringify(permissions)],
-  );
-
-  return rows[0];
-}
-
 // ---------------------------------------------------------------------
 // Sessions
 // ---------------------------------------------------------------------

@@ -4,7 +4,6 @@ import { conflict, notFound } from '../utils/errors.js';
 import { isExclusionViolation, isUniqueViolation } from '../utils/pg-errors.js';
 import { writeAudit } from '../models/audit.model.js';
 import * as budget from '../models/budget.model.js';
-import { TIMEZONE } from '../routes/location.routes.js';
 
 export async function createBudgetPeriod(
   db: Database,
@@ -23,11 +22,13 @@ export async function createBudgetPeriod(
           name: period.name,
           startsOn: period.starts_on,
           endsOn: period.ends_on,
-          rolledOverBalance: await budget.listRolloverBalances(tx, TIMEZONE),
-          
+          rolledOverBalance: await budget.listRolloverBalances(tx, input.startsOn),
         },
       });
-      return { ...period, rolledOverBalance: await budget.listRolloverBalances(tx, TIMEZONE) };
+      return {
+        ...period,
+        rolledOverBalance: await budget.listRolloverBalances(tx, input.startsOn),
+      };
     });
   } catch (error) {
     if (isExclusionViolation(error)) {
@@ -56,9 +57,6 @@ export async function allocateBudget(
 ) {
   try {
     return await withTransaction(db, async (tx) => {
-      if (!(await budget.findTeacher(tx, input.teacherId))) {
-        throw notFound('No active teacher with that id.');
-      }
       if (!(await budget.teacherExists(tx, input.teacherId))) {
         throw notFound('No active teacher with that id.');
       }
@@ -72,7 +70,7 @@ export async function allocateBudget(
       });
       await writeAudit(tx, {
         actorUserId: input.actorUserId,
-        action: 'budget.period.allocated',
+        action: 'budget.monthly.allocated',
         entityType: 'budget_monthly_allocation',
         entityId: result.allocationId,
         metadata: {
@@ -97,18 +95,25 @@ export async function allocateBudget(
     if (isUniqueViolation(error)) {
       throw conflict(
         'DUPLICATE_ALLOCATION',
-        'The teacher already has an allocation for this year/month.',
+        'The teacher already has an allocation for this month. Use an increase or decrease to edit it.',
       );
     }
     throw error;
   }
 }
 
+/**
+ * Increase or decrease a teacher's budget for a specific month. The delta is
+ * recorded as an 'adjustment' ledger entry keyed to that month; it therefore
+ * takes part in the remaining balance immediately and joins the carry-forward
+ * automatically in later months.
+ */
 export async function adjustBudget(
   db: Database,
   input: {
     teacherId: number;
-    periodId: number;
+    year: number;
+    month: number;
     amountPaisa: number;
     reason: string;
     actorUserId: number;
@@ -118,24 +123,23 @@ export async function adjustBudget(
     if (!(await budget.findTeacher(tx, input.teacherId))) {
       throw notFound('No active teacher with that id.');
     }
-    if (!(await budget.findActivePeriod(tx, input.periodId))) {
-      throw notFound('No active budget period with that id.');
-    }
     const entry = await budget.insertAdjustment(tx, {
       teacherId: input.teacherId,
-      periodId: input.periodId,
+      year: input.year,
+      month: input.month,
       amountPaisa: input.amountPaisa,
       actorUserId: input.actorUserId,
       reason: input.reason,
     });
     await writeAudit(tx, {
       actorUserId: input.actorUserId,
-      action: 'budget.adjustment.created',
+      action: 'budget.monthly.adjusted',
       entityType: 'budget_ledger',
       entityId: entry.id,
       metadata: {
         teacherId: input.teacherId,
-        budgetPeriodId: input.periodId,
+        year: input.year,
+        month: input.month,
         amountPaisa: input.amountPaisa,
       },
     });
@@ -146,19 +150,115 @@ export async function adjustBudget(
 export async function getBudgetLedger(
   db: Database,
   teacherId: number,
-  periodId: number,
+  year: number,
+  month: number,
   page: number,
   perPage: number,
 ) {
   if (!(await budget.teacherExists(db, teacherId))) throw notFound('Teacher not found.');
-  if (!(await budget.budgetPeriodExists(db, periodId))) throw notFound('Budget period not found.');
-  const total = await budget.countLedgerEntriesByPeriod(db, teacherId, periodId);
-  const entries = await budget.listLedgerEntriesByPeriod(
+  const total = await budget.countLedgerEntries(db, teacherId, year, month);
+  const entries = await budget.listLedgerEntries(
     db,
     teacherId,
-    periodId,
+    year,
+    month,
     perPage,
     (page - 1) * perPage,
   );
   return { entries, total };
+}
+
+/** Monthly budget planning table: every active teacher with their allocation
+ * for the month, the carried-forward amount and the remaining balance. */
+export function getMonthlySummary(db: Database, year: number, month: number) {
+  return budget.findMonthlyTeacherBalances(db, year, month);
+}
+
+/** Successful (non-cancelled) orders of one budget month. */
+export async function getMonthTransactions(
+  db: Database,
+  input: {
+    year: number;
+    month: number;
+    teacherId?: number | undefined;
+    page: number;
+    perPage: number;
+  },
+) {
+  const total = await budget.countMonthTransactions(db, input.year, input.month, input.teacherId);
+  const rows = await budget.listMonthTransactions(
+    db,
+    input.year,
+    input.month,
+    input.teacherId,
+    input.perPage,
+    (input.page - 1) * input.perPage,
+  );
+  return { rows, total };
+}
+
+export interface BudgetHistory {
+  anchor: { year: number; month: number };
+  months: Array<{
+    year: number;
+    month: number;
+    label: string;
+    totalAllocatedPaisa: number;
+    teachers: Array<{ teacherId: number; teacherName: string; allocatedPaisa: number }>;
+  }>;
+  grandTotalPaisa: number;
+}
+
+const MONTH_LABELS = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
+
+/** Effective allocations per teacher for the six months ending at the anchor
+ * month (inclusive), with the total allocation per month and overall. */
+export async function getBudgetHistory(
+  db: Database,
+  anchorYear: number,
+  anchorMonth: number,
+): Promise<BudgetHistory> {
+  const months: BudgetHistory['months'] = [];
+  for (let offset = 5; offset >= 0; offset -= 1) {
+    const year = anchorMonth - offset < 1 ? anchorYear - 1 : anchorYear;
+    const month = ((anchorMonth - offset - 1 + 12) % 12) + 1;
+    months.push({
+      year,
+      month,
+      label: `${MONTH_LABELS[month - 1]} ${year}`,
+      totalAllocatedPaisa: 0,
+      teachers: [],
+    });
+  }
+  const startYearMonth = months[0]!.year * 100 + months[0]!.month;
+  const rows = await budget.listMonthlyAllocationsWindow(db, startYearMonth, anchorYear * 100 + anchorMonth);
+  const byMonth = new Map(months.map((m) => [m.year * 100 + m.month, m]));
+  for (const row of rows) {
+    const bucket = byMonth.get(row.year * 100 + row.month);
+    if (!bucket) continue;
+    bucket.teachers.push({
+      teacherId: row.teacher_id,
+      teacherName: row.teacher_name,
+      allocatedPaisa: Number(row.allocated_paisa),
+    });
+    bucket.totalAllocatedPaisa += Number(row.allocated_paisa);
+  }
+  return {
+    anchor: { year: anchorYear, month: anchorMonth },
+    months,
+    grandTotalPaisa: months.reduce((sum, m) => sum + m.totalAllocatedPaisa, 0),
+  };
 }

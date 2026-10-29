@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { api, asMessage, hasPermission } from './api';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { api, asMessage, hasPermission, setUnauthorizedHandler } from './api';
 import type { Permission, User } from './types';
 import {
   AdminBudget,
@@ -7,7 +7,7 @@ import {
   AdminMenus,
   AdminSettings,
   AdminUsers,
-} from './pages/AdminPages';
+} from './pages/admin';
 import { StaffOperations, StaffReports } from './pages/StaffPages';
 import { TeacherBudget, TeacherMeals, TeacherOrders, TeacherOverview } from './pages/TeacherPages';
 import { Alert, Button, Field, Input, Mark, Select } from './ui';
@@ -68,7 +68,7 @@ const NAVIGATION: NavigationItem[] = [
   },
   {
     id: 'admin-budget',
-    label: 'Budgets & ledger',
+    label: 'Monthly budget planning',
     symbol: '৳',
     section: 'MANAGEMENT',
     anyPermissions: ['budgets:allocate', 'budgets:adjust', 'budgets:view'],
@@ -104,21 +104,75 @@ export default function App() {
   const [health, setHealth] = useState<'checking' | 'online' | 'offline'>('checking');
   const [globalNotice, setGlobalNotice] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [sessionChecked, setSessionChecked] = useState(false);
+  const [expiresAt, setExpiresAt] = useState<string | null>(null);
+  const sessionActive = useRef(false);
+  const bootValidated = useRef(false);
 
-  // Restore session from localStorage on mount
+  // Restore session from localStorage on mount, then validate it with the
+  // server. A stale/expired token is dropped instead of leaving the user in a
+  // shell where every request fails.
   useEffect(() => {
     const stored = localStorage.getItem('ju_meal_session');
     if (stored) {
       try {
-        const parsed = JSON.parse(stored) as { token: string; user: User };
+        const parsed = JSON.parse(stored) as { token: string; user: User; expiresAt?: string };
         if (parsed.token && parsed.user) {
-          setToken(parsed.token);
-          setUser(parsed.user);
+          const expired =
+            parsed.expiresAt !== undefined && Date.parse(parsed.expiresAt) <= Date.now();
+          if (expired) {
+            localStorage.removeItem('ju_meal_session');
+            setGlobalNotice('Your session has expired. Please sign in again.');
+          } else {
+            setToken(parsed.token);
+            setUser(parsed.user);
+            setExpiresAt(parsed.expiresAt ?? null);
+          }
         }
       } catch {
         /* ignore corrupt session */
       }
     }
+    setSessionChecked(true);
+  }, []);
+
+  // Confirm the restored session is still valid (token not revoked, token
+  // version unchanged) once, right after boot.
+  useEffect(() => {
+    if (!sessionChecked || bootValidated.current) return;
+    if (!token) {
+      bootValidated.current = true;
+      return;
+    }
+    bootValidated.current = true;
+    api<User>('/auth/me', { token })
+      .then((fresh) => setUser(fresh))
+      .catch(() => {
+        setToken(null);
+        setUser(null);
+        setExpiresAt(null);
+        localStorage.removeItem('ju_meal_session');
+        setGlobalNotice('Your session has expired. Please sign in again.');
+      });
+  }, [sessionChecked, token]);
+
+  // Track whether a session exists so the global 401 hook only reacts to the
+  // expiry of a real session (not, say, a failed sign-in attempt).
+  useEffect(() => {
+    sessionActive.current = Boolean(token && user);
+  }, [token, user]);
+
+  // Any later 401 (token revoked or expired mid-use) drops the session too.
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      if (!sessionActive.current) return;
+      setToken(null);
+      setUser(null);
+      setExpiresAt(null);
+      localStorage.removeItem('ju_meal_session');
+      setGlobalNotice('Your session has expired. Please sign in again.');
+    });
+    return () => setUnauthorizedHandler(undefined);
   }, []);
 
   useEffect(() => {
@@ -168,6 +222,7 @@ export default function App() {
     });
     setToken(response.accessToken);
     setUser(response.user);
+    setExpiresAt(response.expiresAt);
     setView(response.user.role === 'TEACHER' ? 'overview' : 'operations');
     setAuthMode('login');
   }
@@ -181,6 +236,7 @@ export default function App() {
     }
     setToken(null);
     setUser(null);
+    setExpiresAt(null);
     setView('overview');
     setGlobalNotice('You have been signed out.');
   }
@@ -188,11 +244,14 @@ export default function App() {
   // Persist session to localStorage
   useEffect(() => {
     if (token && user) {
-      localStorage.setItem('ju_meal_session', JSON.stringify({ token, user }));
+      localStorage.setItem(
+        'ju_meal_session',
+        JSON.stringify({ token, user, ...(expiresAt ? { expiresAt } : {}) }),
+      );
     } else {
       localStorage.removeItem('ju_meal_session');
     }
-  }, [token, user]);
+  }, [token, user, expiresAt]);
 
   if (!token || !user) {
     return (
@@ -379,6 +438,7 @@ function AuthScreen({
   const [fullName, setFullName] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [role, setRole] = useState<'TEACHER' | 'STAFF' | 'ADMIN'>('TEACHER');
+  const [loginRole, setLoginRole] = useState<'TEACHER' | 'STAFF' | 'ADMIN'>('TEACHER');
   const [adminKey, setAdminKey] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -393,6 +453,7 @@ function AuthScreen({
     setEmail('');
     setFullName('');
     setRole('TEACHER');
+    setLoginRole('TEACHER');
     onModeChange(newMode);
   }
 
@@ -420,7 +481,7 @@ function AuthScreen({
         setAdminKey('');
         onModeChange('login');
       } else {
-        await onLogin(email.trim(), password);
+        await onLogin(email.trim(), password, loginRole);
       }
     } catch (e) {
       setError(asMessage(e));
@@ -492,7 +553,7 @@ function AuthScreen({
         <div className="auth-form-wrap">
           <div className="auth-icon">{mode === 'login' ? '↗' : '＋'}</div>
           <div className="eyebrow">{mode === 'login' ? 'WELCOME BACK' : 'GET STARTED'}</div>
-          <h2>{mode === 'login' ? 'Sign in to your account' : 'Create your teacher account'}</h2>
+          <h2>{mode === 'login' ? 'Sign in to your account' : 'Create your account'}</h2>
           <p className="auth-subtitle">
             {mode === 'login'
               ? 'Use your university account to continue.'
@@ -506,6 +567,27 @@ function AuthScreen({
           {error && <Alert>{error}</Alert>}
           {success && <Alert tone="success">{success}</Alert>}
           <form className="auth-form" onSubmit={(e) => void submit(e)}>
+            {mode === 'login' && (
+              <Field label="Signing in as">
+                <div className="role-toggle" role="radiogroup" aria-label="Account role">
+                  {(['TEACHER', 'STAFF', 'ADMIN'] as const).map((option) => (
+                    <button
+                      key={option}
+                      type="button"
+                      className={`role-toggle-option ${loginRole === option ? 'active' : ''}`}
+                      aria-pressed={loginRole === option}
+                      onClick={() => setLoginRole(option)}
+                    >
+                      {option === 'TEACHER'
+                        ? 'Teacher'
+                        : option === 'STAFF'
+                          ? 'Staff'
+                          : 'Admin'}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+            )}
             {mode === 'register' && (
               <>
                 <Field label="Full name">

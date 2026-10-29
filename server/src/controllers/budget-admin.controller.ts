@@ -7,9 +7,19 @@ import {
   adjustBudget,
   allocateBudget,
   createBudgetPeriod,
+  getBudgetHistory,
   getBudgetLedger as getBudgetLedgerService,
+  getMonthlySummary,
+  getMonthTransactions,
 } from '../services/budget-admin.service.js';
-import { presentAllocation, presentBudgetEntry } from '../views/budget-admin.view.js';
+import {
+  presentAllocation,
+  presentBudgetEntry,
+  presentMonthTransactions,
+  presentMonthlyBudgetRows,
+  presentBudgetHistory,
+} from '../views/budget-admin.view.js';
+import { currentDhakaMonth } from '../utils/dhaka-month.js';
 
 const NAME_MAX_LENGTH = 100;
 const REASON_MAX_LENGTH = 500;
@@ -68,10 +78,12 @@ export function adjust(db: Database) {
       max: MAX_AMOUNT_PAISA,
     });
     if (amountPaisa === 0) throw badRequest('amountPaisa must not be zero.');
+    const { year, month } = readYearMonth(body);
 
     const entry = await adjustBudget(db, {
       teacherId: requireInt(body['teacherId'], 'teacherId', { min: 1 }),
-      periodId: requireInt(body['budgetPeriodId'], 'budgetPeriodId', { min: 1 }),
+      year,
+      month,
       amountPaisa,
       reason: requireString(body['reason'], 'reason', { maxLength: REASON_MAX_LENGTH }),
       actorUserId: actor.id,
@@ -80,18 +92,85 @@ export function adjust(db: Database) {
   };
 }
 
+/** GET /staff/budgets/monthly?year&month — the monthly planning table. */
+export function getMonthlyBudget(db: Database) {
+  return async (req: Request, res: Response): Promise<void> => {
+    const { year, month } = readYearMonth(req.query);
+    const rows = await getMonthlySummary(db, year, month);
+    res.status(200).json(presentMonthlyBudgetRows(rows));
+  };
+}
+
+/** GET /staff/budgets/ledger?teacherId&year&month — teacher ledger of one month. */
 export function getBudgetLedger(db: Database) {
   return async (req: Request, res: Response): Promise<void> => {
     const teacherId = readQueryInt(req, 'teacherId');
-    const periodId = readQueryInt(req, 'period');
+    const { year, month } = readYearMonth(req.query);
     const page = readOptionalQueryInt(req, 'page', 1, 1_000_000);
     const perPage = readOptionalQueryInt(req, 'perPage', 20, 100);
-    const result = await getBudgetLedgerService(db, teacherId, periodId, page, perPage);
+    const result = await getBudgetLedgerService(db, teacherId, year, month, page, perPage);
     res.status(200).json({
       data: result.entries.map(presentBudgetEntry),
       meta: { total: result.total, page, perPage },
     });
   };
+}
+
+/** GET /staff/budgets/transactions?year&month&teacherId — successful orders of the month. */
+export function getTransactions(db: Database) {
+  return async (req: Request, res: Response): Promise<void> => {
+    const { year, month } = readYearMonth(req.query);
+    const teacherQuery = req.query['teacherId'];
+    const teacherId =
+      teacherQuery === undefined || teacherQuery === ''
+        ? undefined
+        : readOptionalQueryInt(req, 'teacherId', undefined, Number.MAX_SAFE_INTEGER);
+    const page = readOptionalQueryInt(req, 'page', 1, 1_000_000);
+    const perPage = readOptionalQueryInt(req, 'perPage', 50, 100);
+    const result = await getMonthTransactions(db, {
+      year,
+      month,
+      teacherId,
+      page,
+      perPage,
+    });
+    res.status(200).json({
+      ...presentMonthTransactions(result.rows),
+      meta: { total: result.total, page, perPage },
+    });
+  };
+}
+
+/** GET /staff/budgets/history?year&month — last six months of allocations. */
+export function getHistory(db: Database) {
+  return async (req: Request, res: Response): Promise<void> => {
+    const { year, month } = readYearMonth(req.query);
+    const history = await getBudgetHistory(db, year, month);
+    res.status(200).json({ data: presentBudgetHistory(history) });
+  };
+}
+
+/** Reads year/month from a body or query object; defaults to the current
+ * Dhaka month when both are omitted. Exported for reuse by report controllers. */
+export function readYearMonth(source: unknown): { year: number; month: number } {
+  const record = (source ?? {}) as Record<string, unknown>;
+  const yearRaw = record['year'];
+  const monthRaw = record['month'];
+  if (yearRaw === undefined && monthRaw === undefined) return currentDhakaMonth();
+  const year = readYearMonthInt(yearRaw, 'year', 2000, 2099);
+  const month = readYearMonthInt(monthRaw, 'month', 1, 12);
+  return { year, month };
+}
+
+function readYearMonthInt(raw: unknown, name: string, min: number, max: number): number {
+  if (typeof raw === 'number') {
+    if (!Number.isInteger(raw)) throw badRequest(`${name} must be an integer.`);
+    return requireInt(raw, name, { min, max });
+  }
+  if (typeof raw !== 'string' || !/^\d+$/.test(raw)) {
+    throw badRequest(`${name} must be a positive integer.`);
+  }
+  return requireInt(Number(raw), name, { min, max });
 }
 
 function requireBusinessDate(value: unknown, field: string): string {

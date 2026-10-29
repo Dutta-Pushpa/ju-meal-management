@@ -31,6 +31,9 @@ CREATE TABLE users (
   role            text         NOT NULL,
   designation     text,
   permissions     jsonb        NOT NULL DEFAULT '[]'::jsonb,
+  -- Extra debt headroom (paisa) granted on top of the global max_debt_paisa
+  -- policy, typically via an approved budget request.
+  debt_allowance_paisa bigint NOT NULL DEFAULT 0,
   is_active       boolean      NOT NULL DEFAULT true,
   -- Embedded in every issued token. Incrementing it revokes all of that user's
   -- tokens at once.
@@ -242,7 +245,9 @@ CREATE TABLE orders (
   -- One location per order, enforced by the service layer.
   food_location_id  bigint      NOT NULL REFERENCES food_locations (id) ON DELETE RESTRICT,
   order_date        date        NOT NULL,
-  status            text        NOT NULL DEFAULT 'PENDING',
+  -- Orders are born CONFIRMED (accepted for the day) in the service layer;
+  -- PENDING exists only as a legacy status in historical data.
+  status            text        NOT NULL DEFAULT 'CONFIRMED',
   total_paisa       bigint      NOT NULL,
   idempotency_key   text,
   alternative_item_name         text,
