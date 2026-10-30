@@ -14,6 +14,7 @@ export interface LocationView {
   nameBn: string | null;
   description: string | null;
   isActive: boolean;
+  availableMenuItemCount?: number;
 }
 
 export function presentLocation(row: LocationRow): LocationView {
@@ -23,6 +24,9 @@ export function presentLocation(row: LocationRow): LocationView {
     nameBn: row.name_bn,
     description: row.description,
     isActive: row.is_active,
+    ...(row.available_menu_item_count !== undefined
+      ? { availableMenuItemCount: row.available_menu_item_count }
+      : {}),
   };
 }
 

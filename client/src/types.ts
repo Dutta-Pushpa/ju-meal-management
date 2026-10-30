@@ -32,6 +32,7 @@ export interface Location {
   nameBn: string | null;
   description: string | null;
   isActive: boolean;
+  availableMenuItemCount?: number;
 }
 export interface BudgetPeriod {
   id: number;
