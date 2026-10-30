@@ -88,6 +88,7 @@ export function errorHandler(logger: Logger) {
           code: err.code,
           message: err.expose ? err.message : 'An unexpected error occurred.',
           ...(err.details ? { details: err.details } : {}),
+          ...(err.data ? { data: err.data } : {}),
         },
       };
       res.status(err.status).json(body);

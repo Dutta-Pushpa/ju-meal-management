@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { api, asMessage, hasPermission } from '../../api';
+import { formatDhakaTimestamp, api, asMessage, hasPermission } from '../../api';
 import type { Role, User } from '../../types';
 import {
   Alert,
@@ -30,6 +30,9 @@ export function AdminUsers({ token, sessionUser }: { token: string; sessionUser:
   const [editActive, setEditActive] = useState(true);
   const [busy, setBusy] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [resetLink, setResetLink] = useState<{ user: User; url: string; expiresAt: string } | null>(
+    null,
+  );
   const [createForm, setCreateForm] = useState({
     fullName: '',
     email: '',
@@ -96,7 +99,11 @@ export function AdminUsers({ token, sessionUser }: { token: string; sessionUser:
     }
   }
   async function deleteUserAccount(user: User) {
-    if (!window.confirm(`Are you sure you want to permanently delete ${user.fullName} (${user.email})?`)) {
+    if (
+      !window.confirm(
+        `Are you sure you want to permanently delete ${user.fullName} (${user.email})?`,
+      )
+    ) {
       return;
     }
     setError('');
@@ -151,6 +158,26 @@ export function AdminUsers({ token, sessionUser }: { token: string; sessionUser:
       setError(asMessage(e));
     }
   }
+  async function issueResetLink(user: User) {
+    setError('');
+    setSuccess('');
+    try {
+      const result = await api<{ token: string; expiresAt: string }>(
+        `/staff/users/${user.id}/password-reset`,
+        {
+          token,
+          method: 'POST',
+        },
+      );
+      const url = new URL(window.location.href);
+      url.search = '';
+      url.hash = '';
+      url.searchParams.set('resetToken', result.token);
+      setResetLink({ user, url: url.toString(), expiresAt: result.expiresAt });
+    } catch (e) {
+      setError(asMessage(e));
+    }
+  }
   return (
     <>
       <PageHeader
@@ -170,21 +197,28 @@ export function AdminUsers({ token, sessionUser }: { token: string; sessionUser:
         </Alert>
       )}
       {!canManage ? (
-        <Alert tone="info">
-          User management is restricted to administrator accounts.
-        </Alert>
+        <Alert tone="info">User management is restricted to administrator accounts.</Alert>
       ) : (
         <Card>
-          <div className="toolbar" style={{ flexWrap: 'wrap', gap: '0.75rem', alignItems: 'center' }}>
+          <div
+            className="toolbar"
+            style={{ flexWrap: 'wrap', gap: '0.75rem', alignItems: 'center' }}
+          >
             <div>
               <h2>Account directory</h2>
               <p>{users.length} users from the database</p>
             </div>
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginLeft: 'auto' }}>
-              <span className="field-label" style={{ margin: 0, fontWeight: 600 }}>Filter:</span>
+            <div
+              style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginLeft: 'auto' }}
+            >
+              <span className="field-label" style={{ margin: 0, fontWeight: 600 }}>
+                Filter:
+              </span>
               <Select
                 value={roleFilter}
-                onChange={(e) => setRoleFilter(e.target.value as 'ALL' | 'TEACHER' | 'STAFF' | 'ADMIN')}
+                onChange={(e) =>
+                  setRoleFilter(e.target.value as 'ALL' | 'TEACHER' | 'STAFF' | 'ADMIN')
+                }
                 aria-label="Filter users by role"
               >
                 <option value="ALL">All roles</option>
@@ -233,7 +267,13 @@ export function AdminUsers({ token, sessionUser }: { token: string; sessionUser:
                     <td>
                       <StatusPill status={u.isActive ? 'ACTIVE' : 'INACTIVE'} />
                     </td>
-                    <td>{new Date(u.createdAt).toLocaleDateString()}</td>
+                    <td>
+                      {formatDhakaTimestamp(u.createdAt, {
+                        year: 'numeric',
+                        month: 'short',
+                        day: '2-digit',
+                      })}
+                    </td>
                     <td>
                       <div className="button-row table-actions">
                         {u.id !== sessionUser.id &&
@@ -246,6 +286,11 @@ export function AdminUsers({ token, sessionUser }: { token: string; sessionUser:
                               <Button variant="secondary" onClick={() => void quickToggle(u)}>
                                 {u.isActive ? 'Deactivate' : 'Activate'}
                               </Button>
+                              {sessionUser.role === 'ADMIN' && (
+                                <Button variant="ghost" onClick={() => void issueResetLink(u)}>
+                                  Reset password
+                                </Button>
+                              )}
                               {sessionUser.role === 'ADMIN' && (
                                 <Button
                                   variant="ghost"
@@ -318,7 +363,9 @@ export function AdminUsers({ token, sessionUser }: { token: string; sessionUser:
                   <Field label="Role">
                     <Select
                       value={createForm.role}
-                      onChange={(e) => setCreateForm({ ...createForm, role: e.target.value as Role })}
+                      onChange={(e) =>
+                        setCreateForm({ ...createForm, role: e.target.value as Role })
+                      }
                     >
                       <option value="TEACHER">Teacher</option>
                       <option value="STAFF">Staff</option>
@@ -408,7 +455,36 @@ export function AdminUsers({ token, sessionUser }: { token: string; sessionUser:
           </div>
         </div>
       )}
+      {resetLink && (
+        <div className="modal-backdrop" role="presentation">
+          <div
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="reset-link-heading"
+          >
+            <h2 id="reset-link-heading">Password reset / activation link</h2>
+            <p>
+              Share this one-time link privately with {resetLink.user.fullName}. It expires{' '}
+              {formatDhakaTimestamp(resetLink.expiresAt)} and can be used once.
+            </p>
+            <Field label="One-time link">
+              <Input readOnly value={resetLink.url} onFocus={(e) => e.currentTarget.select()} />
+            </Field>
+            <div className="modal-actions">
+              <Button type="button" variant="secondary" onClick={() => setResetLink(null)}>
+                Close
+              </Button>
+              <Button
+                type="button"
+                onClick={() => void navigator.clipboard.writeText(resetLink.url)}
+              >
+                Copy link
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
-

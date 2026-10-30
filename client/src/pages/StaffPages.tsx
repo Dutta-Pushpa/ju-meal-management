@@ -369,6 +369,7 @@ export function StaffOperations({ token, user }: { token: string; user: User }) 
                         {order.items.map((item, index) => (
                           <span key={`${item.name}-${index}`}>
                             {item.name} × {item.quantity}
+                            {item.notes ? ` · Note: ${item.notes}` : ''}
                           </span>
                         ))}
                       </div>
@@ -384,7 +385,10 @@ export function StaffOperations({ token, user }: { token: string; user: User }) 
                       )}
                       {deliveringId === order.id ? (
                         <div className="delivery-form">
-                          <Field label="Actual delivered cost (৳)" hint="Deducted from the teacher's budget; differences from the estimate are settled automatically.">
+                          <Field
+                            label="Actual delivered cost (৳)"
+                            hint="Deducted from the teacher's budget; differences from the estimate are settled automatically."
+                          >
                             <Input
                               type="number"
                               min="0"
@@ -405,7 +409,10 @@ export function StaffOperations({ token, user }: { token: string; user: User }) 
                             />
                           </Field>
                           <div className="button-row">
-                            <Button disabled={busyId === order.id} onClick={() => void confirmDelivery(order)}>
+                            <Button
+                              disabled={busyId === order.id}
+                              onClick={() => void confirmDelivery(order)}
+                            >
                               {busyId === order.id ? 'Saving…' : 'Confirm delivery'}
                             </Button>
                             <Button variant="ghost" onClick={() => setDeliveringId(null)}>
@@ -659,11 +666,7 @@ export function StaffReports({ token, user }: { token: string; user: User }) {
             <>
               <Card className="filter-card">
                 <Field label="Report month (six months ending here)">
-                  <Input
-                    type="month"
-                    value={month}
-                    onChange={(e) => setMonth(e.target.value)}
-                  />
+                  <Input type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
                 </Field>
               </Card>
               {monthlyLoading ? (
@@ -754,11 +757,7 @@ export function StaffReports({ token, user }: { token: string; user: User }) {
             <>
               <Card className="filter-card">
                 <Field label="Six months ending in">
-                  <Input
-                    type="month"
-                    value={month}
-                    onChange={(e) => setMonth(e.target.value)}
-                  />
+                  <Input type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
                 </Field>
               </Card>
               {historyLoading ? (
@@ -784,7 +783,9 @@ export function StaffReports({ token, user }: { token: string; user: User }) {
                       label="Average per month"
                       value={
                         history.months.length
-                          ? money(Math.round(history.grandTotal.amountPaisa / history.months.length))
+                          ? money(
+                              Math.round(history.grandTotal.amountPaisa / history.months.length),
+                            )
                           : '—'
                       }
                       detail="Across all six months"
@@ -795,11 +796,14 @@ export function StaffReports({ token, user }: { token: string; user: User }) {
                   <Card>
                     <div className="card-heading">
                       <div>
-                        <h2>Total allocated budget — {history.months[0]?.label ?? ''} to {history.months[history.months.length - 1]?.label ?? ''}</h2>
+                        <h2>
+                          Total allocated budget — {history.months[0]?.label ?? ''} to{' '}
+                          {history.months[history.months.length - 1]?.label ?? ''}
+                        </h2>
                         <p>
                           Effective monthly allocations (base allocation plus admin edits) across
-                          the six months ending at the month you selected. Manage the current
-                          month from the monthly budget planning section.
+                          the six months ending at the month you selected. Manage the current month
+                          from the monthly budget planning section.
                         </p>
                       </div>
                     </div>

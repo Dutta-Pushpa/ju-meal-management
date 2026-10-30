@@ -45,7 +45,13 @@ export async function getGroupedStaffOrders(db: Database, date: string) {
       orders: Array<{
         id: number;
         teacherName: string;
-        items: Array<{ name: string; quantity: number }>;
+        items: Array<{
+          name: string;
+          quantity: number;
+          notes: string | null;
+          alternativeMenuItemId: number | null;
+          alternativeItemName: string | null;
+        }>;
         totalPaisa: number;
       }>;
     }
@@ -68,6 +74,9 @@ export async function getGroupedStaffOrders(db: Database, date: string) {
     const orderItems = (itemsByOrder.get(row.id) ?? []).map((item) => ({
       name: item.item_name_snapshot,
       quantity: item.quantity,
+      notes: item.notes,
+      alternativeMenuItemId: item.alternative_menu_item_id,
+      alternativeItemName: item.alternative_menu_item_name ?? null,
     }));
     for (const item of orderItems) {
       group.itemCounts.set(item.name, (group.itemCounts.get(item.name) ?? 0) + item.quantity);

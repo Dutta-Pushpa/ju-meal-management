@@ -8,8 +8,14 @@ import {
   listManagedUsers as listManagedUserRows,
 } from '../models/user.model.js';
 import { badRequest } from '../utils/errors.js';
-import { requireBoolean, requireInt, requireObject, requireString, ValidationError } from '../utils/validation.js';
-import { isValidEmail } from '../services/auth.service.js';
+import {
+  requireBoolean,
+  requireInt,
+  requireObject,
+  requireString,
+  ValidationError,
+} from '../utils/validation.js';
+import { isValidEmail, issuePasswordReset, type AuthDeps } from '../services/auth.service.js';
 
 export function patchUser(db: Database) {
   return async (req: Request, res: Response): Promise<void> => {
@@ -26,7 +32,10 @@ export function patchUser(db: Database) {
 
     let fullName: string | undefined;
     if (Object.hasOwn(body, 'fullName')) {
-      fullName = requireString(body['fullName'], 'fullName', { minLength: 1, maxLength: 200 }).trim();
+      fullName = requireString(body['fullName'], 'fullName', {
+        minLength: 1,
+        maxLength: 200,
+      }).trim();
     }
 
     let email: string | undefined;
@@ -113,5 +122,23 @@ export function listActiveTeachers(db: Database) {
       data: rows.map((row) => ({ id: row.id, fullName: row.full_name, email: row.email })),
       meta: { total: rows.length },
     });
+  };
+}
+
+/** POST /api/staff/users/:id/password-reset; the one-time token is returned only to an admin. */
+export function issuePasswordResetController(deps: AuthDeps) {
+  return async (req: Request, res: Response): Promise<void> => {
+    const rawId = req.params['id'];
+    if (typeof rawId !== 'string' || !/^\d+$/.test(rawId)) {
+      throw badRequest('id must be a positive integer.');
+    }
+    const issued = await issuePasswordReset(
+      deps,
+      requireInt(Number(rawId), 'id', { min: 1 }),
+      currentUser(req).id,
+    );
+    res
+      .status(201)
+      .json({ data: { token: issued.token, expiresAt: issued.expiresAt.toISOString() } });
   };
 }

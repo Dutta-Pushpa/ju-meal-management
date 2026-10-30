@@ -36,7 +36,7 @@ const MENU_ITEM_COLUMNS = `
   is_available, is_active
 `;
 
-/** Load an active location and its currently available menu items. */
+/** Load an active location and its menu, including sold-out active items. */
 export async function findAvailableMenu(
   db: Queryable,
   locationId: number,
@@ -56,7 +56,7 @@ export async function findAvailableMenu(
   const itemResult = await db.query<MenuItemRow>(
     `SELECT ${MENU_ITEM_COLUMNS}
        FROM menu_items
-      WHERE food_location_id = $1 AND is_active AND is_available
+      WHERE food_location_id = $1 AND is_active
       ORDER BY category NULLS LAST, name, id`,
     [locationId],
   );

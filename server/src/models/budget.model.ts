@@ -21,6 +21,10 @@ export interface BudgetEntryRow {
   reason: string | null;
   created_by: number;
   created_at: Date;
+  running_balance_paisa?: number;
+  order_date?: string | null;
+  location_id?: number | null;
+  location_name?: string | null;
 }
 
 export interface MonthlyAllocationRow {
@@ -134,7 +138,6 @@ export async function insertPeriod(
   );
   return rows[0]!;
 }
-
 
 export interface RolloverBalance {
   teacher_id: number;
@@ -426,16 +429,26 @@ export async function insertDebit(
   return rows[0]!;
 }
 
+export interface LedgerFilters {
+  from?: string;
+  to?: string;
+  status?: 'allocation' | 'debit' | 'refund' | 'adjustment';
+}
+
 export async function countLedgerEntries(
   db: Queryable,
   teacherId: number,
   year: number,
   month: number,
+  filters: LedgerFilters = {},
 ): Promise<number> {
   const { rows } = await db.query<{ total: number }>(
     `SELECT count(*)::int AS total FROM budget_ledger
-      WHERE teacher_id = $1 AND year = $2 AND month = $3`,
-    [teacherId, year, month],
+      WHERE teacher_id = $1 AND year = $2 AND month = $3
+        AND ($4::date IS NULL OR created_at >= $4::date)
+        AND ($5::date IS NULL OR created_at < $5::date + INTERVAL '1 day')
+        AND ($6::text IS NULL OR entry_type = $6)`,
+    [teacherId, year, month, filters.from ?? null, filters.to ?? null, filters.status ?? null],
   );
   return rows[0]!.total;
 }
@@ -447,14 +460,49 @@ export async function listLedgerEntries(
   month: number,
   limit: number,
   offset: number,
+  filters: LedgerFilters = {},
 ): Promise<BudgetEntryRow[]> {
   const { rows } = await db.query<BudgetEntryRow>(
-    `SELECT id, teacher_id, year, month, entry_type, amount_paisa, reason, created_by, created_at, order_id
-        FROM budget_ledger
-       WHERE teacher_id = $1 AND year = $2 AND month = $3
-       ORDER BY created_at DESC, id DESC
-       LIMIT $4 OFFSET $5`,
-    [teacherId, year, month, limit, offset],
+    `WITH opening AS (
+       SELECT COALESCE((SELECT SUM(a.allocated_paisa) FROM budget_monthly_allocations a
+                         WHERE a.teacher_id = $1 AND (a.year < $2 OR (a.year = $2 AND a.month < $3))), 0)
+            + COALESCE((SELECT SUM(l.amount_paisa) FROM budget_ledger l
+                         WHERE l.teacher_id = $1 AND (l.year < $2 OR (l.year = $2 AND l.month < $3))
+                           AND l.year IS NOT NULL AND l.month IS NOT NULL AND l.entry_type <> 'allocation'), 0)
+            + COALESCE((SELECT a.allocated_paisa FROM budget_monthly_allocations a
+                         WHERE a.teacher_id = $1 AND a.year = $2 AND a.month = $3), 0) AS amount_paisa
+     ), month_entries AS (
+       SELECT l.id, l.teacher_id, l.year, l.month, l.entry_type, l.amount_paisa, l.order_id,
+              l.reason, l.created_by, l.created_at,
+              (SELECT amount_paisa FROM opening)
+                + SUM(CASE WHEN l.entry_type = 'allocation' THEN 0 ELSE l.amount_paisa END)
+                    OVER (ORDER BY l.created_at, l.id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+                AS running_balance_paisa
+         FROM budget_ledger l
+        WHERE l.teacher_id = $1 AND l.year = $2 AND l.month = $3
+     )
+     SELECT b.id, b.teacher_id, b.year, b.month, b.entry_type, b.amount_paisa, b.order_id,
+            b.reason, b.created_by, b.created_at, b.running_balance_paisa,
+            to_char(o.order_date, 'YYYY-MM-DD') AS order_date,
+            o.food_location_id AS location_id, fl.name AS location_name
+       FROM month_entries b
+       LEFT JOIN orders o ON o.id = b.order_id
+       LEFT JOIN food_locations fl ON fl.id = o.food_location_id
+      WHERE ($6::date IS NULL OR b.created_at >= $6::date)
+        AND ($7::date IS NULL OR b.created_at < $7::date + INTERVAL '1 day')
+        AND ($8::text IS NULL OR b.entry_type = $8)
+      ORDER BY b.created_at DESC, b.id DESC
+      LIMIT $4 OFFSET $5`,
+    [
+      teacherId,
+      year,
+      month,
+      limit,
+      offset,
+      filters.from ?? null,
+      filters.to ?? null,
+      filters.status ?? null,
+    ],
   );
   return rows;
 }
@@ -482,6 +530,7 @@ export async function listLedgerEntriesByPeriod(
   periodId: number,
   limit: number,
   offset: number,
+  filters: LedgerFilters = {},
 ): Promise<BudgetEntryRow[]> {
   // Get the period's start date to determine year/month
   const { rows } = await db.query<{ starts_on: string }>(
@@ -492,7 +541,7 @@ export async function listLedgerEntriesByPeriod(
   const startsOn = rows[0].starts_on;
   const year = parseInt(startsOn.slice(0, 4), 10);
   const month = parseInt(startsOn.slice(5, 7), 10);
-  return await listLedgerEntries(db, teacherId, year, month, limit, offset);
+  return await listLedgerEntries(db, teacherId, year, month, limit, offset, filters);
 }
 
 export async function insertAdjustment(
@@ -511,14 +560,7 @@ export async function insertAdjustment(
        (teacher_id, year, month, entry_type, amount_paisa, reason, created_by)
      VALUES ($1, $2, $3, 'adjustment', $4, $5, $6)
      RETURNING id, teacher_id, budget_period_id, year, month, entry_type, amount_paisa, reason, created_by, created_at`,
-    [
-      input.teacherId,
-      input.year,
-      input.month,
-      input.amountPaisa,
-      input.reason,
-      input.actorUserId,
-    ],
+    [input.teacherId, input.year, input.month, input.amountPaisa, input.reason, input.actorUserId],
   );
   return rows[0]!;
 }

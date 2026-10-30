@@ -7,6 +7,7 @@ import { notFound } from '../utils/errors.js';
 export const SETTING_KEYS = [
   'order_placement_deadline',
   'order_cancellation_deadline',
+  'ordering_disabled_dates',
   'negative_balance_allowed',
   'max_debt_paisa',
   'max_additional_orders',
@@ -41,6 +42,7 @@ export async function updateSetting(
 export const POLICY_DEFAULTS: Record<SettingKey, unknown> = {
   order_placement_deadline: '12:30',
   order_cancellation_deadline: '13:00',
+  ordering_disabled_dates: [],
   negative_balance_allowed: false,
   max_debt_paisa: 0,
   max_additional_orders: 0,

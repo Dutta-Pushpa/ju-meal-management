@@ -146,6 +146,48 @@ export async function updatePasswordHash(
   await db.query('UPDATE users SET password_hash = $2 WHERE id = $1', [userId, passwordHash]);
 }
 
+/** Replace credentials and invalidate every existing session. */
+export async function replacePasswordAndRevoke(
+  db: Queryable,
+  userId: number,
+  passwordHash: string,
+  activate = false,
+): Promise<void> {
+  await db.query(
+    `UPDATE users SET password_hash = $2, is_active = CASE WHEN $3 THEN true ELSE is_active END,
+                      token_version = token_version + 1, updated_at = now() WHERE id = $1`,
+    [userId, passwordHash, activate],
+  );
+  await revokeAllSessionsForUser(db, userId);
+  await db.query('DELETE FROM password_reset_tokens WHERE user_id = $1', [userId]);
+}
+
+export async function insertPasswordResetToken(
+  db: Queryable,
+  userId: number,
+  tokenHash: string,
+  expiresAt: Date,
+): Promise<void> {
+  await db.query('DELETE FROM password_reset_tokens WHERE user_id = $1', [userId]);
+  await db.query(
+    'INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)',
+    [userId, tokenHash, expiresAt],
+  );
+}
+
+export async function consumePasswordResetToken(
+  db: Queryable,
+  tokenHash: string,
+): Promise<number | undefined> {
+  const { rows } = await db.query<{ user_id: number }>(
+    `UPDATE password_reset_tokens SET used_at = now()
+      WHERE token_hash = $1 AND used_at IS NULL AND expires_at > now()
+      RETURNING user_id`,
+    [tokenHash],
+  );
+  return rows[0]?.user_id;
+}
+
 /** Increment the token version, invalidating every token the user holds. */
 export async function bumpTokenVersion(db: Queryable, userId: number): Promise<number> {
   const { rows } = await db.query<{ token_version: number }>(

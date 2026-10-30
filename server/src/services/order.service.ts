@@ -1,7 +1,7 @@
 import { withTransaction, type Database } from '../db/pool.js';
 import type { OrderItemInput, OrderQueryFilters } from '../models/order.model.js';
 import * as orders from '../models/order.model.js';
-import { internal, notFound, unprocessable } from '../utils/errors.js';
+import { conflict, internal, notFound, unprocessable } from '../utils/errors.js';
 import { writeAudit } from '../models/audit.model.js';
 
 export interface PlaceOrderInput {
@@ -33,6 +33,9 @@ export async function placeOrder(db: Database, input: PlaceOrderInput) {
       }
 
       const rule = await orders.checkOrderingRules(tx, input.orderDate);
+      if (rule.disabled) {
+        throw unprocessable('ORDERING_DISABLED', 'Ordering is disabled for this date.');
+      }
       if (rule.closed) {
         throw unprocessable('ORDERING_CLOSED', 'The ordering cutoff for this date has passed.');
       }
@@ -41,7 +44,14 @@ export async function placeOrder(db: Database, input: PlaceOrderInput) {
       // booked to the order's Dhaka month (year/month) in the ledger.
       const periodId = await orders.findPeriodForDate(tx, input.orderDate);
 
-      const itemIds = [...new Set(input.items.map((item) => item.menuItemId))];
+      const itemIds = [
+        ...new Set(
+          input.items.flatMap((item) => [
+            item.menuItemId,
+            ...(item.alternativeMenuItemId ? [item.alternativeMenuItemId] : []),
+          ]),
+        ),
+      ];
       const pricedItems = await orders.findPricedItems(tx, itemIds);
       if (pricedItems.length !== itemIds.length) {
         throw unprocessable('ITEM_UNAVAILABLE', 'A requested menu item is unavailable.');
@@ -54,7 +64,41 @@ export async function placeOrder(db: Database, input: PlaceOrderInput) {
         );
       }
 
+      if (input.items.some((line) => line.alternativeMenuItemId === line.menuItemId)) {
+        throw unprocessable(
+          'ITEM_UNAVAILABLE',
+          'An alternative must be a different available menu item.',
+        );
+      }
       const byId = new Map(pricedItems.map((item) => [item.id, item]));
+      const changedPrices = input.items.some((line) => {
+        const item = byId.get(line.menuItemId)!;
+        return (
+          line.expectedUnitPricePaisa !== undefined &&
+          line.expectedUnitPricePaisa !== item.price_paisa
+        );
+      });
+      if (changedPrices) {
+        const freshItems = input.items.map((line) => {
+          const item = byId.get(line.menuItemId)!;
+          return {
+            menuItemId: item.id,
+            name: item.name,
+            quantity: line.quantity,
+            unitPricePaisa: item.price_paisa,
+            lineTotalPaisa: item.price_paisa * line.quantity,
+            notes: line.notes,
+          };
+        });
+        throw conflict(
+          'PRICE_CHANGED',
+          'Menu prices changed. Review the fresh order total before confirming.',
+          {
+            items: freshItems,
+            totalPaisa: freshItems.reduce((sum, item) => sum + item.lineTotalPaisa, 0),
+          },
+        );
+      }
       const totalPaisa = input.items.reduce((sum, line) => {
         const item = byId.get(line.menuItemId)!;
         const lineTotal = item.price_paisa * line.quantity;
@@ -186,8 +230,8 @@ export async function cancelOrder(
     if (!order || (input.actorRole === 'TEACHER' && order.teacher_id !== input.actorId)) {
       throw notFound('Order not found.');
     }
-    if (order.status !== 'CONFIRMED') {
-      throw unprocessable('INVALID_STATUS_TRANSITION', 'Only confirmed orders can be cancelled.');
+    if (!['PENDING', 'ACCEPTED', 'CONFIRMED'].includes(order.status)) {
+      throw unprocessable('INVALID_STATUS_TRANSITION', 'Only undelivered orders can be cancelled.');
     }
 
     const staffOverride = input.actorRole !== 'TEACHER';
@@ -203,7 +247,7 @@ export async function cancelOrder(
     const debit = await orders.findOrderDebitRecord(tx, input.orderId);
     if (debit === undefined) throw internal('Order debit record is missing.');
     const reason = input.reason ?? 'Cancelled by teacher before cutoff';
-    await orders.cancelOrder(tx, input.orderId);
+    await orders.cancelOrder(tx, input.orderId, input.actorId, reason);
     await orders.insertRefund(tx, {
       teacherId: order.teacher_id,
       periodId: debit.budget_period_id ?? undefined,
@@ -214,7 +258,7 @@ export async function cancelOrder(
       reason,
       actorId: input.actorId,
     });
-    await orders.insertCancelledEvent(tx, order.id, input.actorId, reason);
+    await orders.insertCancelledEvent(tx, order.id, order.status, input.actorId, reason);
     if (staffOverride) {
       await writeAudit(tx, {
         actorUserId: input.actorId,
@@ -224,6 +268,22 @@ export async function cancelOrder(
         metadata: { teacherId: order.teacher_id, reason },
       });
     }
-    return loadOrder(tx, order.id);
+    const cancelled = await loadOrder(tx, order.id);
+    const refundYear = debit.year ?? Number(order.order_date.slice(0, 4));
+    const refundMonth = debit.month ?? Number(order.order_date.slice(5, 7));
+    const availableAfterRefund = await orders.getAvailableBalance(
+      tx,
+      order.teacher_id,
+      refundYear,
+      refundMonth,
+    );
+    return {
+      ...cancelled,
+      cancellation: {
+        originalAmountPaisa: order.total_paisa,
+        refundAmountPaisa: order.total_paisa,
+        availableBalancePaisa: availableAfterRefund,
+      },
+    };
   });
 }

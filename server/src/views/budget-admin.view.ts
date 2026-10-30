@@ -14,6 +14,7 @@ function presentMoney(amountPaisa: number) {
 }
 
 export function presentBudgetEntry(entry: BudgetEntryRow) {
+  const reconciled = entry.entry_type === 'adjustment' && /reconcil/i.test(entry.reason ?? '');
   return {
     id: entry.id,
     teacherId: entry.teacher_id,
@@ -21,8 +22,25 @@ export function presentBudgetEntry(entry: BudgetEntryRow) {
     year: entry.year ?? null,
     month: entry.month ?? null,
     entryType: entry.entry_type,
+    label:
+      entry.entry_type === 'allocation'
+        ? 'Allocation'
+        : entry.entry_type === 'debit'
+          ? 'Debit'
+          : entry.entry_type === 'refund'
+            ? 'Refund'
+            : reconciled
+              ? 'Reconciliation'
+              : 'Adjustment',
     amount: presentMoney(entry.amount_paisa),
+    runningBalance:
+      entry.running_balance_paisa === undefined ? null : presentMoney(entry.running_balance_paisa),
     orderId: entry.order_id ?? null,
+    orderDate: 'order_date' in entry ? entry.order_date : null,
+    location:
+      'location_id' in entry && entry.location_id !== null
+        ? { id: entry.location_id, name: entry.location_name }
+        : null,
     reason: entry.reason,
     createdBy: entry.created_by,
     createdAt: entry.created_at.toISOString(),

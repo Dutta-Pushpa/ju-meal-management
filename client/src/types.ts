@@ -49,6 +49,7 @@ export interface MenuItem {
   category: string | null;
   price: Money;
   isAvailable: boolean;
+  isSoldOut?: boolean;
   isActive?: boolean;
   location?: { id: number; name: string };
 }
@@ -59,6 +60,9 @@ export interface OrderItem {
   quantity: number;
   unitPrice?: Money;
   lineTotal?: Money;
+  notes?: string | null;
+  alternativeMenuItemId?: number | null;
+  alternativeMenuItemName?: string | null;
 }
 export interface Order {
   id: number;
@@ -68,6 +72,13 @@ export interface Order {
   total: Money;
   items: OrderItem[];
   confirmedAt: string;
+  canCancel?: boolean;
+  cancelBlockedReason?: string | null;
+  cancelDeadline?: string | null;
+  cancelledAt?: string | null;
+  cancelReason?: string | null;
+  refundAmount?: Money;
+  actualCost?: Money | null;
 }
 export interface BudgetSummary {
   year: number;
@@ -104,7 +115,7 @@ export interface StaffOrder {
   /** The fallback dish the teacher declared when ordering, if any. */
   alternativeItemName: string | null;
   alternativeUnitPrice: Money | null;
-  items: Array<{ name: string; quantity: number }>;
+  items: Array<{ name: string; quantity: number; notes?: string | null }>;
   confirmedAt: string;
 }
 export interface GroupedOrders {
@@ -118,7 +129,7 @@ export interface GroupedOrders {
     orders: Array<{
       id: number;
       teacherName: string;
-      items: Array<{ name: string; quantity: number }>;
+      items: Array<{ name: string; quantity: number; notes?: string | null }>;
       total: Money;
     }>;
   }>;

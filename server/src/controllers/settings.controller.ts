@@ -29,8 +29,20 @@ export function patchSetting(db: Database) {
     if (key === 'order_cancellation_deadline' || key === 'order_placement_deadline') {
       const allSettings = await listSettings(db);
       const settingsMap = new Map(allSettings.map((s) => [s.key, s.value]));
-      const placement = key === 'order_placement_deadline' ? (value as string) : String(settingsMap.get('order_placement_deadline') ?? '12:30');
-      const cancellation = key === 'order_cancellation_deadline' ? (value as string) : String(settingsMap.get('order_cancellation_deadline') ?? '13:00');
+      const configuredPlacement = settingsMap.get('order_placement_deadline');
+      const configuredCancellation = settingsMap.get('order_cancellation_deadline');
+      const placement =
+        key === 'order_placement_deadline'
+          ? (value as string)
+          : typeof configuredPlacement === 'string'
+            ? configuredPlacement
+            : '12:30';
+      const cancellation =
+        key === 'order_cancellation_deadline'
+          ? (value as string)
+          : typeof configuredCancellation === 'string'
+            ? configuredCancellation
+            : '13:00';
 
       if (cancellation < placement) {
         throw badRequest('The cancellation deadline cannot be earlier than the order deadline.');
@@ -43,18 +55,32 @@ export function patchSetting(db: Database) {
 }
 
 function validateSetting(key: SettingKey, value: unknown): unknown {
+  if (key === 'ordering_disabled_dates') {
+    if (!Array.isArray(value) || value.length > 366) {
+      throw badRequest('value must be an array of at most 366 YYYY-MM-DD dates.');
+    }
+    const dates = value.map((item, index) => {
+      const date = requireString(item, `value[${index}]`);
+      const parsed = new Date(`${date}T00:00:00.000Z`);
+      if (
+        !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+        Number.isNaN(parsed.valueOf()) ||
+        parsed.toISOString().slice(0, 10) !== date
+      ) {
+        throw badRequest(`value[${index}] must be a valid YYYY-MM-DD date.`);
+      }
+      return date;
+    });
+    return [...new Set(dates)].sort();
+  }
   if (key === 'order_placement_deadline' || key === 'order_cancellation_deadline') {
     const time = requireString(value, 'value');
     if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time))
       throw badRequest('value must be a valid HH:mm time in 24-hour format.');
     return time;
   }
-  if (key === 'negative_balance_allowed')
-    return requireBoolean(value, 'value');
-  if (
-    key === 'max_debt_paisa' ||
-    key === 'max_additional_orders'
-  ) {
+  if (key === 'negative_balance_allowed') return requireBoolean(value, 'value');
+  if (key === 'max_debt_paisa' || key === 'max_additional_orders') {
     return requireInt(value, 'value', { min: 0 });
   }
   throw badRequest('Unsupported setting key.');
