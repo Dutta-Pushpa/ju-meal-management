@@ -111,7 +111,7 @@ describe('GET /api/locations/:id/menu', () => {
     expect(response.status).toBe(401);
   });
 
-  it('returns available active items with paisa and formatted prices', async () => {
+  it('returns active items with availability and paisa-formatted prices', async () => {
     await query(
       `INSERT INTO menu_items (food_location_id, name, category, price_paisa)
        VALUES ($1, 'Soup', 'lunch', 1250), ($1, 'Hidden', 'lunch', 500), ($1, 'Inactive', 'lunch', 600)`,
@@ -127,9 +127,18 @@ describe('GET /api/locations/:id/menu', () => {
     expect(response.body.data.location).toEqual({ id: locationId, name: expect.any(String) });
     expect(response.body.data.items).toEqual([
       expect.objectContaining({
+        name: 'Hidden',
+        price: { amountPaisa: 500, amountFormatted: '৳5.00' },
+        isAvailable: false,
+        availabilityLabel: 'Sold out',
+        orderable: false,
+      }),
+      expect.objectContaining({
         name: 'Soup',
         price: { amountPaisa: 1250, amountFormatted: '৳12.50' },
         isAvailable: true,
+        availabilityLabel: 'Available',
+        orderable: true,
       }),
     ]);
   });

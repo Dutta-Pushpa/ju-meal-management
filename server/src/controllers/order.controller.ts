@@ -34,13 +34,37 @@ export function createOrder(deps: { db: Database }) {
         menuItemId: requireInt(line['menuItemId'], `items[${index}].menuItemId`, { min: 1 }),
         quantity: requireInt(line['quantity'], `items[${index}].quantity`, { min: 1, max: 100 }),
         notes: optionalNotes(line['notes'], `items[${index}].notes`),
+        ...(line['unitPricePaisa'] === undefined
+          ? {}
+          : {
+              expectedUnitPricePaisa: requireInt(
+                line['unitPricePaisa'],
+                `items[${index}].unitPricePaisa`,
+                { min: 1 },
+              ),
+            }),
+        ...(line['alternativeMenuItemId'] === undefined
+          ? {}
+          : {
+              alternativeMenuItemId:
+                line['alternativeMenuItemId'] === null
+                  ? null
+                  : requireInt(
+                      line['alternativeMenuItemId'],
+                      `items[${index}].alternativeMenuItemId`,
+                      { min: 1 },
+                    ),
+            }),
       };
     });
     // Optional fallback dish: what the teacher accepts if their first choice is
     // unavailable. Name and price must be provided together.
     let alternativeItemName: string | null = null;
     let alternativeUnitPricePaisa: number | null = null;
-    if (body['alternativeItemName'] !== undefined || body['alternativeUnitPricePaisa'] !== undefined) {
+    if (
+      body['alternativeItemName'] !== undefined ||
+      body['alternativeUnitPricePaisa'] !== undefined
+    ) {
       alternativeItemName = requireString(body['alternativeItemName'], 'alternativeItemName', {
         maxLength: 200,
       });
@@ -73,16 +97,24 @@ export function listMyOrders(db: Database) {
       from: readDateQuery(req, 'from'),
       to: readDateQuery(req, 'to'),
       status: readStatusQuery(req),
+      search: readSearchQuery(req),
     };
     if (filters.from && filters.to && filters.from > filters.to) {
       throw badRequest('from must be on or before to.');
     }
     const page = readIntQuery(req, 'page', 1, 1, 1_000_000);
-    const pageSize = readIntQuery(req, 'pageSize', 20, 1, 100);
+    const pageSize = readIntQuery(req, 'pageSize', 20, 1, 20);
     const result = await getMyOrders(db, actor.id, filters, page, pageSize);
     res.status(200).json({
       data: result.orders.map(({ row, items }) => presentOrder(row, items)),
-      meta: { total: result.total, page, pageSize },
+      meta: {
+        total: result.total,
+        page,
+        pageSize,
+        pageCount: Math.ceil(result.total / pageSize),
+        hasNext: page * pageSize < result.total,
+        hasPrevious: page > 1,
+      },
     });
   };
 }
@@ -115,7 +147,21 @@ export function cancelOrder(deps: { db: Database }) {
       actorRole: actor.role,
       reason,
     });
-    res.status(200).json({ data: presentOrder(result.order, result.items) });
+    const money = (amountPaisa: number) => ({
+      amountPaisa,
+      amountFormatted: `৳${(amountPaisa / 100).toFixed(2)}`,
+    });
+    res.status(200).json({
+      data: {
+        ...presentOrder(result.order, result.items),
+        cancellation: {
+          originalAmount: money(result.cancellation.originalAmountPaisa),
+          refundAmount: money(result.cancellation.refundAmountPaisa),
+          availableBalance: money(result.cancellation.availableBalancePaisa),
+          cancelledAt: result.order.cancelled_at?.toISOString() ?? null,
+        },
+      },
+    });
   };
 }
 
@@ -163,15 +209,26 @@ function readDateQuery(req: Request, key: string): string | undefined {
 
 function readStatusQuery(
   req: Request,
-): 'CONFIRMED' | 'COLLECTED' | 'DELIVERED' | 'CANCELLED' | undefined {
+): 'PENDING' | 'ACCEPTED' | 'CONFIRMED' | 'COLLECTED' | 'DELIVERED' | 'CANCELLED' | undefined {
   const value = req.query['status'];
   if (value === undefined) return undefined;
   return requireEnum(value, 'status', [
+    'PENDING',
+    'ACCEPTED',
     'CONFIRMED',
     'COLLECTED',
     'DELIVERED',
     'CANCELLED',
   ] as const);
+}
+
+function readSearchQuery(req: Request): string | undefined {
+  const value = req.query['search'] ?? req.query['q'];
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string' || value.trim().length > 200) {
+    throw badRequest('search must be a string of at most 200 characters.');
+  }
+  return value.trim() || undefined;
 }
 
 function readIntQuery(

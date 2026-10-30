@@ -59,10 +59,12 @@ export const ERROR_CODES = [
   'LOCATION_HAS_ACTIVE_ORDERS',
   'DUPLICATE_ALLOCATION',
   'BUDGET_PERIOD_ALREADY_EXISTS',
+  'ORDERING_DISABLED',
   'ORDERING_CLOSED',
   'ITEM_UNAVAILABLE',
   'MIXED_LOCATIONS',
   'BUDGET_INSUFFICIENT',
+  'PRICE_CHANGED',
   'INVALID_STATUS_TRANSITION',
   'CUTOFF_PASSED',
   'RATE_LIMITED',
@@ -80,6 +82,7 @@ export interface ApiErrorBody {
   code: ErrorCode;
   message: string;
   details?: FieldIssue[];
+  data?: Record<string, unknown>;
 }
 
 export interface ApiErrorResponse {

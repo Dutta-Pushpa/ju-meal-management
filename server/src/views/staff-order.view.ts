@@ -17,7 +17,16 @@ export function presentStaffOrder(row: StaffOrderRow, items: OrderItemRow[]) {
     alternativeUnitPrice: row.alternative_unit_price_paisa
       ? money(row.alternative_unit_price_paisa)
       : null,
-    items: items.map((item) => ({ name: item.item_name_snapshot, quantity: item.quantity })),
+    items: items.map((item) => ({
+      name: item.item_name_snapshot,
+      quantity: item.quantity,
+      notes: item.notes,
+      alternativeMenuItemId: item.alternative_menu_item_id,
+      alternativeItem:
+        item.alternative_menu_item_id === null
+          ? null
+          : { id: item.alternative_menu_item_id, name: item.alternative_menu_item_name ?? null },
+    })),
     confirmedAt: row.confirmed_at.toISOString(),
   };
 }
@@ -33,7 +42,13 @@ export function presentGroupedOrders(result: {
     orders: Array<{
       id: number;
       teacherName: string;
-      items: Array<{ name: string; quantity: number }>;
+      items: Array<{
+        name: string;
+        quantity: number;
+        notes: string | null;
+        alternativeMenuItemId: number | null;
+        alternativeItemName: string | null;
+      }>;
       totalPaisa: number;
     }>;
   }>;

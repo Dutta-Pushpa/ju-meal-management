@@ -5,6 +5,8 @@ import {
   isValidEmail,
   login as loginService,
   logout as logoutService,
+  changePassword as changePasswordService,
+  resetPassword as resetPasswordService,
   registerUser,
   type AuthDeps,
   type AuthUser,
@@ -136,6 +138,33 @@ export function me() {
   };
 }
 
+/** POST /api/auth/change-password */
+export function changePassword(deps: AuthControllerDeps) {
+  return async (req: Request, res: Response): Promise<void> => {
+    const actor = currentUser(req);
+    const currentPassword = requireString(readBody(req, 'currentPassword'), 'currentPassword', {
+      maxLength: 200,
+    });
+    const newPassword = requireString(readBody(req, 'newPassword'), 'newPassword', {
+      maxLength: 200,
+    });
+    await changePasswordService(deps, { userId: actor.id, currentPassword, newPassword });
+    res
+      .status(200)
+      .json({ data: { message: 'Password changed. Sign in again with your new password.' } });
+  };
+}
+/** POST /api/auth/reset-password */
+export function resetPassword(deps: AuthControllerDeps) {
+  return async (req: Request, res: Response): Promise<void> => {
+    const token = requireString(readBody(req, 'token'), 'token', { maxLength: 128 });
+    const newPassword = requireString(readBody(req, 'newPassword'), 'newPassword', {
+      maxLength: 200,
+    });
+    await resetPasswordService(deps, { token, newPassword });
+    res.status(200).json({ data: { message: 'Password set. You may now sign in.' } });
+  };
+}
 function readBody(req: Request, field: string): unknown {
   const body = req.body as Record<string, unknown> | undefined;
   return body?.[field];

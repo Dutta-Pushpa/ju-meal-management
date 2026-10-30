@@ -28,11 +28,7 @@ function monthLabel(month: number): string {
   return MONTH_LABELS[Math.min(Math.max(month, 1), 12) - 1]!;
 }
 
-export function presentTeacherBudget(
-  row: TeacherBudgetSummaryRow,
-  year: number,
-  month: number,
-) {
+export function presentTeacherBudget(row: TeacherBudgetSummaryRow, year: number, month: number) {
   const yearMonth = `${year}-${String(month).padStart(2, '0')}`;
   return {
     year,
@@ -54,13 +50,31 @@ export function presentTeacherBudget(
 }
 
 export function presentTeacherLedgerEntry(row: BudgetEntryRow) {
+  const reconciled = row.entry_type === 'adjustment' && /reconcil/i.test(row.reason ?? '');
   return {
     id: row.id,
     teacherId: row.teacher_id,
     budgetPeriodId: row.budget_period_id ?? null,
     entryType: row.entry_type,
+    label:
+      row.entry_type === 'allocation'
+        ? 'Allocation'
+        : row.entry_type === 'debit'
+          ? 'Debit'
+          : row.entry_type === 'refund'
+            ? 'Refund'
+            : reconciled
+              ? 'Reconciliation'
+              : 'Adjustment',
     amount: money(row.amount_paisa),
+    runningBalance:
+      row.running_balance_paisa === undefined ? null : money(row.running_balance_paisa),
     orderId: row.order_id ?? null,
+    orderDate: row.order_date ?? null,
+    location:
+      row.location_id === null || row.location_id === undefined
+        ? null
+        : { id: row.location_id, name: row.location_name ?? null },
     reason: row.reason,
     createdBy: row.created_by,
     createdAt: row.created_at.toISOString(),

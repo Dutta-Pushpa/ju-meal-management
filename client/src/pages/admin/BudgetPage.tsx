@@ -6,7 +6,14 @@
 // includes carry-forward from previous months shown in red when it is
 // negative). Each row has an edit action to increase or decrease the budget.
 import { Fragment, useCallback, useEffect, useState, type FormEvent } from 'react';
-import { api, asMessage, currentDhakaMonth, hasPermission, money } from '../../api';
+import {
+  formatDhakaTimestamp,
+  api,
+  asMessage,
+  currentDhakaMonth,
+  hasPermission,
+  money,
+} from '../../api';
 import type {
   BudgetRequest,
   LedgerEntry,
@@ -143,7 +150,10 @@ export function AdminBudget({ token, user }: { token: string; user: User }) {
           })),
         );
         if (budgetRows[0]) {
-          setAllocateForm((f) => ({ ...f, teacherId: f.teacherId || String(budgetRows[0]!.teacher.id) }));
+          setAllocateForm((f) => ({
+            ...f,
+            teacherId: f.teacherId || String(budgetRows[0].teacher.id),
+          }));
         }
       }
     } catch (e) {
@@ -161,7 +171,9 @@ export function AdminBudget({ token, user }: { token: string; user: User }) {
   const loadRequests = useCallback(async () => {
     if (!canView) return;
     try {
-      setRequests(await api<BudgetRequest[]>('/staff/budget-requests?status=pending&perPage=50', { token }));
+      setRequests(
+        await api<BudgetRequest[]>('/staff/budget-requests?status=pending&perPage=50', { token }),
+      );
     } catch (e) {
       setError(asMessage(e));
     }
@@ -364,9 +376,7 @@ export function AdminBudget({ token, user }: { token: string; user: User }) {
                     <div className="profile-figures">
                       <span>
                         <small>Remaining</small>
-                        <strong
-                          className={row.remaining.amountPaisa < 0 ? 'amount-negative' : ''}
-                        >
+                        <strong className={row.remaining.amountPaisa < 0 ? 'amount-negative' : ''}>
                           {row.remaining.amountPaisa < 0
                             ? `−${money(Math.abs(row.remaining.amountPaisa))}`
                             : money(row.remaining.amountPaisa)}
@@ -375,7 +385,8 @@ export function AdminBudget({ token, user }: { token: string; user: User }) {
                       <span>
                         <small>Allocated</small>
                         <strong>
-                          {moneyCell(row.allocated.amountPaisa) + moneyCell(row.adjusted.amountPaisa) >
+                          {moneyCell(row.allocated.amountPaisa) +
+                            moneyCell(row.adjusted.amountPaisa) >
                           0
                             ? money(
                                 moneyCell(row.allocated.amountPaisa) +
@@ -439,7 +450,7 @@ export function AdminBudget({ token, user }: { token: string; user: User }) {
                                 {entry.entryType}
                               </span>
                             </td>
-                            <td>{new Date(entry.createdAt).toLocaleString()}</td>
+                            <td>{formatDhakaTimestamp(entry.createdAt)}</td>
                             <td>
                               {entry.orderId ? `Order #${entry.orderId}` : `Entry #${entry.id}`}
                             </td>
@@ -502,9 +513,9 @@ export function AdminBudget({ token, user }: { token: string; user: User }) {
                 <div>
                   <h2>Budget requests</h2>
                   <p>
-                    Teacher requests waiting for review. Approving a budget increase adds it to
-                    the teacher's current month; approving a debt allowance raises their personal
-                    debt limit.
+                    Teacher requests waiting for review. Approving a budget increase adds it to the
+                    teacher's current month; approving a debt allowance raises their personal debt
+                    limit.
                   </p>
                 </div>
                 <Button variant="secondary" onClick={() => void loadRequests()}>
@@ -535,7 +546,7 @@ export function AdminBudget({ token, user }: { token: string; user: User }) {
                       </td>
                       <td className="align-right">{request.amount.amountFormatted}</td>
                       <td>{request.reason}</td>
-                      <td>{new Date(request.createdAt).toLocaleString()}</td>
+                      <td>{formatDhakaTimestamp(request.createdAt)}</td>
                       {canAdjust && (
                         <td className="align-right">
                           <span className="toolbar">
@@ -608,9 +619,7 @@ export function AdminBudget({ token, user }: { token: string; user: User }) {
                     required
                     maxLength={500}
                     value={allocateForm.reason}
-                    onChange={(e) =>
-                      setAllocateForm({ ...allocateForm, reason: e.target.value })
-                    }
+                    onChange={(e) => setAllocateForm({ ...allocateForm, reason: e.target.value })}
                   />
                 </Field>
                 <Button type="submit" disabled={busy || !allocateForm.teacherId}>
@@ -651,106 +660,106 @@ export function AdminBudget({ token, user }: { token: string; user: User }) {
                       const editing = canAdjust && editingId === row.teacher.id;
                       return (
                         <Fragment key={row.teacher.id}>
-                        <tr>
-                          <td>
-                            <strong>{row.teacher.fullName}</strong>
-                            <small className="table-subtitle">{row.teacher.email}</small>
-                          </td>
-                              <td>
-                                {moneyCell(row.allocated.amountPaisa) +
-                                  moneyCell(row.adjusted.amountPaisa) >
-                                0 ? (
-                                  <span>
-                                    {money(
-                                      moneyCell(row.allocated.amountPaisa) +
-                                        moneyCell(row.adjusted.amountPaisa),
-                                    )}
-                                  </span>
+                          <tr>
+                            <td>
+                              <strong>{row.teacher.fullName}</strong>
+                              <small className="table-subtitle">{row.teacher.email}</small>
+                            </td>
+                            <td>
+                              {moneyCell(row.allocated.amountPaisa) +
+                                moneyCell(row.adjusted.amountPaisa) >
+                              0 ? (
+                                <span>
+                                  {money(
+                                    moneyCell(row.allocated.amountPaisa) +
+                                      moneyCell(row.adjusted.amountPaisa),
+                                  )}
+                                </span>
+                              ) : (
+                                <span className="table-subtitle">Not allocated</span>
+                              )}
+                            </td>
+                            <td
+                              className={row.carryForward.amountPaisa < 0 ? 'amount-negative' : ''}
+                            >
+                              {money(row.carryForward.amountPaisa)}
+                            </td>
+                            <td>{money(row.spent.amountPaisa)}</td>
+                            <td
+                              className={`align-right ${
+                                row.remaining.amountPaisa < 0 ? 'amount-negative' : ''
+                              }`}
+                            >
+                              <strong>
+                                {row.remaining.amountPaisa < 0
+                                  ? `−${money(Math.abs(row.remaining.amountPaisa))}`
+                                  : money(row.remaining.amountPaisa)}
+                              </strong>
+                            </td>
+                            {canAdjust && (
+                              <td className="align-right">
+                                {editing ? (
+                                  <Button variant="ghost" onClick={cancelEdit}>
+                                    Cancel
+                                  </Button>
                                 ) : (
-                                  <span className="table-subtitle">Not allocated</span>
+                                  <Button
+                                    variant="secondary"
+                                    onClick={() => startEdit(row.teacher.id)}
+                                  >
+                                    ✎ Edit budget
+                                  </Button>
                                 )}
                               </td>
-                              <td
-                                className={
-                                  row.carryForward.amountPaisa < 0 ? 'amount-negative' : ''
-                                }
-                              >
-                                {money(row.carryForward.amountPaisa)}
+                            )}
+                          </tr>
+                          {editing ? (
+                            <tr className="budget-edit-row">
+                              <td colSpan={canAdjust ? 6 : 5}>
+                                <form
+                                  className="budget-edit-form"
+                                  onSubmit={(e) => void saveEdit(e)}
+                                >
+                                  <label>
+                                    <span className="budget-edit-label">
+                                      Change (৳) — use − to decrease
+                                    </span>
+                                    <Input
+                                      type="number"
+                                      step="0.01"
+                                      required
+                                      value={editForm.amountTaka}
+                                      onChange={(e) =>
+                                        setEditForm({ ...editForm, amountTaka: e.target.value })
+                                      }
+                                      placeholder="e.g. 200.00 or -150.00"
+                                      aria-label="Budget change in taka"
+                                    />
+                                  </label>
+                                  <label>
+                                    <span className="budget-edit-label">Reason</span>
+                                    <Input
+                                      required
+                                      maxLength={500}
+                                      value={editForm.reason}
+                                      onChange={(e) =>
+                                        setEditForm({ ...editForm, reason: e.target.value })
+                                      }
+                                      placeholder="Reason for the change"
+                                      aria-label="Reason"
+                                    />
+                                  </label>
+                                  <Button type="submit" disabled={busy}>
+                                    {busy ? 'Saving…' : 'Save'}
+                                  </Button>
+                                  <Button type="button" variant="ghost" onClick={cancelEdit}>
+                                    Cancel
+                                  </Button>
+                                </form>
                               </td>
-                              <td>{money(row.spent.amountPaisa)}</td>
-                              <td
-                                className={`align-right ${
-                                  row.remaining.amountPaisa < 0 ? 'amount-negative' : ''
-                                }`}
-                              >
-                                <strong>
-                                  {row.remaining.amountPaisa < 0
-                                    ? `−${money(Math.abs(row.remaining.amountPaisa))}`
-                                    : money(row.remaining.amountPaisa)}
-                                </strong>
-                              </td>
-                              {canAdjust && (
-                                <td className="align-right">
-                                  {editing ? (
-                                    <Button variant="ghost" onClick={cancelEdit}>
-                                      Cancel
-                                    </Button>
-                                  ) : (
-                                    <Button
-                                      variant="secondary"
-                                      onClick={() => startEdit(row.teacher.id)}
-                                    >
-                                      ✎ Edit budget
-                                    </Button>
-                                  )}
-                                </td>
-                              )}
                             </tr>
-                            {editing ? (
-                              <tr className="budget-edit-row">
-                                <td colSpan={canAdjust ? 6 : 5}>
-                                  <form
-                                    className="budget-edit-form"
-                                    onSubmit={(e) => void saveEdit(e)}
-                                  >
-                                    <label>
-                                      <span className="budget-edit-label">Change (৳) — use − to decrease</span>
-                                      <Input
-                                        type="number"
-                                        step="0.01"
-                                        required
-                                        value={editForm.amountTaka}
-                                        onChange={(e) =>
-                                          setEditForm({ ...editForm, amountTaka: e.target.value })
-                                        }
-                                        placeholder="e.g. 200.00 or -150.00"
-                                        aria-label="Budget change in taka"
-                                      />
-                                    </label>
-                                    <label>
-                                      <span className="budget-edit-label">Reason</span>
-                                      <Input
-                                        required
-                                        maxLength={500}
-                                        value={editForm.reason}
-                                        onChange={(e) =>
-                                          setEditForm({ ...editForm, reason: e.target.value })
-                                        }
-                                        placeholder="Reason for the change"
-                                        aria-label="Reason"
-                                      />
-                                    </label>
-                                    <Button type="submit" disabled={busy}>
-                                      {busy ? 'Saving…' : 'Save'}
-                                    </Button>
-                                    <Button type="button" variant="ghost" onClick={cancelEdit}>
-                                      Cancel
-                                    </Button>
-                                  </form>
-                                </td>
-                              </tr>
-                            ) : null}
-                          </Fragment>
+                          ) : null}
+                        </Fragment>
                       );
                     })}
                   </tbody>
@@ -765,9 +774,7 @@ export function AdminBudget({ token, user }: { token: string; user: User }) {
                             : ''
                         }
                       >
-                        {money(
-                          rows.reduce((s, r) => s + moneyCell(r.carryForward.amountPaisa), 0),
-                        )}
+                        {money(rows.reduce((s, r) => s + moneyCell(r.carryForward.amountPaisa), 0))}
                       </th>
                       <th>{money(rows.reduce((s, r) => s + moneyCell(r.spent.amountPaisa), 0))}</th>
                       <th className="align-right">{money(totalRemaining)}</th>
@@ -790,8 +797,8 @@ export function AdminBudget({ token, user }: { token: string; user: User }) {
                 <div>
                   <h2>Order records — {formatMonthLabel(year, month)}</h2>
                   <p>
-                    Every successfully completed meal order of this budget month, with date,
-                    amount and transaction id.
+                    Every successfully completed meal order of this budget month, with date, amount
+                    and transaction id.
                   </p>
                 </div>
                 <div className="toolbar">

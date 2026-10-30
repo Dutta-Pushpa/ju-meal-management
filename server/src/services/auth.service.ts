@@ -1,3 +1,4 @@
+import { createHash, randomBytes } from 'node:crypto';
 import type { Permission, Role } from '@ju/shared';
 import { conflict, forbidden, unauthorized } from '../utils/errors.js';
 import {
@@ -11,7 +12,12 @@ import { type IssuedToken, signAccessToken, verifyAccessToken } from '../utils/t
 import { isUniqueViolation } from '../utils/pg-errors.js';
 import * as users from '../models/user.model.js';
 import { writeAudit } from '../models/audit.model.js';
-import type { Database, Queryable, TransactionClient } from '../db/pool.js';
+import {
+  withTransaction,
+  type Database,
+  type Queryable,
+  type TransactionClient,
+} from '../db/pool.js';
 
 /**
  * Authentication and account creation.
@@ -277,3 +283,74 @@ export async function revokeAllForUser(db: TransactionClient, userId: number): P
 }
 
 export const PASSWORD_POLICY_MIN_LENGTH = PASSWORD_MIN_LENGTH;
+
+/** Change a signed-in user's password only after verifying their current credential. */
+export async function changePassword(
+  deps: AuthDeps,
+  input: { userId: number; currentPassword: string; newPassword: string },
+): Promise<void> {
+  assertPasswordAcceptable(input.newPassword, 'newPassword');
+  const row = await users.findUserById(deps.db, input.userId);
+  if (!row || !(await verifyPassword(input.currentPassword, row.password_hash))) {
+    throw unauthorized('The current password is incorrect.');
+  }
+  const hash = await hashPassword(input.newPassword, deps.bcryptCost);
+  await withTransaction(deps.db, async (tx) => {
+    const latest = await users.lockUserForManagement(tx, input.userId);
+    if (!latest || !(await verifyPassword(input.currentPassword, latest.password_hash))) {
+      throw unauthorized('The current password is incorrect.');
+    }
+    await users.replacePasswordAndRevoke(tx, input.userId, hash);
+    await writeAudit(tx, {
+      actorUserId: input.userId,
+      action: 'auth.password_changed',
+      entityType: 'user',
+      entityId: input.userId,
+      metadata: {},
+    });
+  });
+}
+const hashResetToken = (token: string): string => createHash('sha256').update(token).digest('hex');
+/** Issue a single-use reset/activation token; the raw token is returned once for delivery. */
+export async function issuePasswordReset(
+  deps: AuthDeps,
+  userId: number,
+  actorId: number,
+): Promise<{ token: string; expiresAt: Date }> {
+  const user = await users.findUserById(deps.db, userId);
+  if (!user) throw unauthorized('The requested account is unavailable.');
+  const token = randomBytes(32).toString('base64url');
+  const expiresAt = new Date(Date.now() + 60 * 60_000);
+  await withTransaction(deps.db, async (tx) => {
+    await users.insertPasswordResetToken(tx, userId, hashResetToken(token), expiresAt);
+    await writeAudit(tx, {
+      actorUserId: actorId,
+      action: 'auth.password_reset_issued',
+      entityType: 'user',
+      entityId: userId,
+      metadata: { expiresAt: expiresAt.toISOString() },
+    });
+  });
+  return { token, expiresAt };
+}
+/** Consume a reset token exactly once and replace the account password. */
+export async function resetPassword(
+  deps: AuthDeps,
+  input: { token: string; newPassword: string },
+): Promise<void> {
+  assertPasswordAcceptable(input.newPassword, 'newPassword');
+  const tokenHash = hashResetToken(input.token);
+  const hash = await hashPassword(input.newPassword, deps.bcryptCost);
+  await withTransaction(deps.db, async (tx) => {
+    const userId = await users.consumePasswordResetToken(tx, tokenHash);
+    if (!userId) throw unauthorized('The reset token is invalid or expired.');
+    await users.replacePasswordAndRevoke(tx, userId, hash, true);
+    await writeAudit(tx, {
+      actorUserId: undefined,
+      action: 'auth.password_reset_completed',
+      entityType: 'user',
+      entityId: userId,
+      metadata: {},
+    });
+  });
+}

@@ -1,13 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { api, asMessage, hasPermission, setUnauthorizedHandler } from './api';
+import { api, asMessage, formatDhakaTimestamp, hasPermission, setUnauthorizedHandler } from './api';
 import type { Permission, User } from './types';
-import {
-  AdminBudget,
-  AdminLocations,
-  AdminMenus,
-  AdminSettings,
-  AdminUsers,
-} from './pages/admin';
+import { AdminBudget, AdminLocations, AdminMenus, AdminSettings, AdminUsers } from './pages/admin';
 import { StaffOperations, StaffReports } from './pages/StaffPages';
 import { TeacherBudget, TeacherMeals, TeacherOrders, TeacherOverview } from './pages/TeacherPages';
 import { Alert, Button, Field, Input, Mark, Select } from './ui';
@@ -104,6 +98,13 @@ export default function App() {
   const [health, setHealth] = useState<'checking' | 'online' | 'offline'>('checking');
   const [globalNotice, setGlobalNotice] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [passwordDialog, setPasswordDialog] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [passwordNotice, setPasswordNotice] = useState('');
+  const [resetToken, setResetToken] = useState<string | null>(() =>
+    new URLSearchParams(window.location.search).get('resetToken'),
+  );
   const [sessionChecked, setSessionChecked] = useState(false);
   const [expiresAt, setExpiresAt] = useState<string | null>(null);
   const sessionActive = useRef(false);
@@ -241,6 +242,24 @@ export default function App() {
     setGlobalNotice('You have been signed out.');
   }
 
+  async function changePassword(e: FormEvent) {
+    e.preventDefault();
+    setPasswordNotice('');
+    try {
+      const result = await api<{ message: string }>('/auth/change-password', {
+        token,
+        method: 'POST',
+        body: { currentPassword, newPassword },
+      });
+      setPasswordNotice(result.message);
+      setCurrentPassword('');
+      setNewPassword('');
+      window.setTimeout(() => void signOut(), 1200);
+    } catch (error) {
+      setPasswordNotice(asMessage(error));
+    }
+  }
+
   // Persist session to localStorage
   useEffect(() => {
     if (token && user) {
@@ -252,6 +271,21 @@ export default function App() {
       localStorage.removeItem('ju_meal_session');
     }
   }, [token, user, expiresAt]);
+
+  if (!token && resetToken) {
+    return (
+      <ResetPasswordScreen
+        token={resetToken}
+        onDone={() => {
+          const url = new URL(window.location.href);
+          url.searchParams.delete('resetToken');
+          window.history.replaceState({}, '', url.toString());
+          setResetToken(null);
+          setGlobalNotice('Password updated. Please sign in with your new password.');
+        }}
+      />
+    );
+  }
 
   if (!token || !user) {
     return (
@@ -350,18 +384,29 @@ export default function App() {
           </div>
           <div className="topbar-right">
             <span className="today-label">
-              {new Intl.DateTimeFormat('en', {
+              {formatDhakaTimestamp(new Date(), {
                 weekday: 'short',
                 month: 'short',
                 day: 'numeric',
-                timeZone: 'Asia/Dhaka',
-              }).format(new Date())}
+                hour: undefined,
+                minute: undefined,
+              })}
             </span>
             <span className="topbar-divider" />
             <span className="user-chip">
               <span className="avatar avatar-tiny">{user.fullName.slice(0, 1).toUpperCase()}</span>
               {user.fullName.split(' ')[0]}
             </span>
+            <Button
+              variant="ghost"
+              className="signout-button"
+              onClick={() => {
+                setPasswordNotice('');
+                setPasswordDialog(true);
+              }}
+            >
+              Change password
+            </Button>
             <Button variant="ghost" className="signout-button" onClick={() => void signOut()}>
               Sign out ↗
             </Button>
@@ -411,7 +456,119 @@ export default function App() {
             </span>
           </footer>
         </div>
+        {passwordDialog && (
+          <div className="modal-backdrop" role="presentation">
+            <form
+              className="modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="password-heading"
+              onSubmit={(e) => void changePassword(e)}
+            >
+              <h2 id="password-heading">Change password</h2>
+              {passwordNotice && <Alert>{passwordNotice}</Alert>}
+              <Field label="Current password">
+                <Input
+                  type="password"
+                  autoComplete="current-password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  required
+                />
+              </Field>
+              <Field label="New password" hint="At least 12 characters">
+                <Input
+                  type="password"
+                  autoComplete="new-password"
+                  minLength={12}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  required
+                />
+              </Field>
+              <div className="modal-actions">
+                <Button type="button" variant="secondary" onClick={() => setPasswordDialog(false)}>
+                  Close
+                </Button>
+                <Button type="submit">Update password</Button>
+              </div>
+            </form>
+          </div>
+        )}
       </main>
+    </div>
+  );
+}
+
+function ResetPasswordScreen({ token, onDone }: { token: string; onDone: () => void }) {
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
+  const [busy, setBusy] = useState(false);
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setError('');
+    if (password !== confirm) {
+      setError('Passwords do not match.');
+      return;
+    }
+    setBusy(true);
+    try {
+      await api('/auth/reset-password', { method: 'POST', body: { token, newPassword: password } });
+      setSuccess(true);
+    } catch (e) {
+      setError(asMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="auth-screen">
+      <section className="auth-panel" style={{ margin: 'auto', maxWidth: 520 }}>
+        <div className="auth-form-wrap">
+          <div className="eyebrow">ACCOUNT SECURITY</div>
+          <h2>Set a new password</h2>
+          <p className="auth-subtitle">
+            This one-time link also activates an account that has not been activated yet.
+          </p>
+          {error && <Alert>{error}</Alert>}
+          {success ? (
+            <>
+              <Alert tone="success">Password set successfully. You can now sign in.</Alert>
+              <Button onClick={onDone}>Continue to sign in</Button>
+            </>
+          ) : (
+            <form className="auth-form" onSubmit={(event) => void submit(event)}>
+              <Field label="New password" hint="Use at least 12 characters.">
+                <Input
+                  type="password"
+                  minLength={12}
+                  maxLength={72}
+                  autoComplete="new-password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+              </Field>
+              <Field label="Confirm new password">
+                <Input
+                  type="password"
+                  minLength={12}
+                  maxLength={72}
+                  autoComplete="new-password"
+                  required
+                  value={confirm}
+                  onChange={(e) => setConfirm(e.target.value)}
+                />
+              </Field>
+              <Button type="submit" disabled={busy}>
+                {busy ? 'Updating…' : 'Set password'}
+              </Button>
+            </form>
+          )}
+        </div>
+      </section>
     </div>
   );
 }
@@ -578,11 +735,7 @@ function AuthScreen({
                       aria-pressed={loginRole === option}
                       onClick={() => setLoginRole(option)}
                     >
-                      {option === 'TEACHER'
-                        ? 'Teacher'
-                        : option === 'STAFF'
-                          ? 'Staff'
-                          : 'Admin'}
+                      {option === 'TEACHER' ? 'Teacher' : option === 'STAFF' ? 'Staff' : 'Admin'}
                     </button>
                   ))}
                 </div>

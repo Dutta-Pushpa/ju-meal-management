@@ -1,16 +1,7 @@
 import { useEffect, useState } from 'react';
-import { api, asMessage } from '../../api';
+import { formatDhakaTimestamp, api, asMessage } from '../../api';
 import type { AppSetting } from '../../types';
-import {
-  Alert,
-  Button,
-  Card,
-  Empty,
-  Field,
-  Input,
-  Loading,
-  PageHeader,
-} from '../../ui';
+import { Alert, Button, Card, Empty, Field, Input, Loading, PageHeader } from '../../ui';
 
 /** Admin page — application settings backed by the settings table. */
 
@@ -128,7 +119,11 @@ export function AdminSettings({ token }: { token: string }) {
               </div>
               {setting.key === 'negative_balance_allowed' ? (
                 <Field label="Allow negative balance (debt)">
-                  <div className="role-toggle" role="radiogroup" aria-label="Negative balance policy">
+                  <div
+                    className="role-toggle"
+                    role="radiogroup"
+                    aria-label="Negative balance policy"
+                  >
                     <button
                       type="button"
                       className={`role-toggle-option ${(drafts[setting.key] ?? 'false') === 'true' ? 'active' : ''}`}
@@ -171,7 +166,8 @@ export function AdminSettings({ token }: { token: string }) {
                     placeholder="0"
                   />
                 </Field>
-              ) : setting.key === 'order_placement_deadline' || setting.key === 'order_cancellation_deadline' ? (
+              ) : setting.key === 'order_placement_deadline' ||
+                setting.key === 'order_cancellation_deadline' ? (
                 <Field
                   label={
                     setting.key === 'order_placement_deadline'
@@ -195,7 +191,7 @@ export function AdminSettings({ token }: { token: string }) {
                 </Field>
               )}
               <div className="setting-footer">
-                <small>Last updated {new Date(setting.updatedAt).toLocaleString()}</small>
+                <small>Last updated {formatDhakaTimestamp(setting.updatedAt)}</small>
                 <Button disabled={busyKey === setting.key} onClick={() => void save(setting)}>
                   {busyKey === setting.key ? 'Saving…' : 'Save setting'}
                 </Button>
@@ -209,4 +205,3 @@ export function AdminSettings({ token }: { token: string }) {
     </>
   );
 }
-

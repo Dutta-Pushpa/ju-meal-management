@@ -1,6 +1,7 @@
 import type { Queryable } from '../db/pool.js';
 import { notFound } from '../utils/errors.js';
 import * as budgets from '../models/teacher-budget.model.js';
+import type { LedgerFilters } from '../models/budget.model.js';
 
 /** Teachers always receive a summary row (zeros when they have not been
  * allocated yet), so the UI can show a friendly "no allocation yet" state. */
@@ -22,8 +23,9 @@ export async function getTeacherLedger(
   month: number,
   page: number,
   perPage: number,
+  filters: LedgerFilters = {},
 ) {
-  const total = await budgets.countLedgerEntries(db, teacherId, year, month);
+  const total = await budgets.countLedgerEntries(db, teacherId, year, month, filters);
   const entries = await budgets.listLedgerEntries(
     db,
     teacherId,
@@ -31,6 +33,7 @@ export async function getTeacherLedger(
     month,
     perPage,
     (page - 1) * perPage,
+    filters,
   );
   return { entries, total };
 }

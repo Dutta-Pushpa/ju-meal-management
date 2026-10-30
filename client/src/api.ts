@@ -76,6 +76,21 @@ export function todayInDhaka(): string {
   return `${values['year']}-${values['month']}-${values['day']}`;
 }
 
+export function formatDhakaTimestamp(
+  value: string | Date,
+  options: Intl.DateTimeFormatOptions = {},
+): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Dhaka',
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    ...options,
+  }).format(typeof value === 'string' ? new Date(value) : value);
+}
+
 export function money(amountPaisa: number): string {
   return `৳${(amountPaisa / 100).toLocaleString('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }

@@ -4,6 +4,8 @@ export interface OrderItemInput {
   menuItemId: number;
   quantity: number;
   notes: string | null;
+  expectedUnitPricePaisa?: number;
+  alternativeMenuItemId?: number | null;
 }
 
 export interface PricedMenuItem {
@@ -21,6 +23,27 @@ export interface CreatedOrder {
   status: 'PENDING' | 'ACCEPTED' | 'CONFIRMED' | 'COLLECTED' | 'DELIVERED' | 'CANCELLED';
   total_paisa: number;
   confirmed_at: Date;
+  cancelled_at?: Date | null;
+  cancelled_by_role?: 'teacher' | 'staff' | null;
+  cancel_reason?: string | null;
+  refund_paisa?: number;
+  actual_cost_paisa?: number | null;
+  settled_at?: Date | null;
+  cancel_deadline?: Date;
+  server_now?: Date;
+  status_timeline?: Array<{
+    status: string;
+    changedAt: string;
+    actorRole: string;
+    note: string | null;
+  }>;
+  ledger_entries?: Array<{
+    id: number;
+    entryType: string;
+    amountPaisa: number;
+    createdAt: string;
+    reason: string | null;
+  }>;
 }
 
 export interface OrderReadRow extends CreatedOrder {
@@ -31,7 +54,9 @@ export interface OrderQueryFilters {
   orderDate?: string | undefined;
   from?: string | undefined;
   to?: string | undefined;
-  status?: 'CONFIRMED' | 'COLLECTED' | 'DELIVERED' | 'CANCELLED' | undefined;
+  status?:
+    'PENDING' | 'ACCEPTED' | 'CONFIRMED' | 'COLLECTED' | 'DELIVERED' | 'CANCELLED' | undefined;
+  search?: string | undefined;
 }
 
 export interface OrderItemRow {
@@ -41,6 +66,9 @@ export interface OrderItemRow {
   unit_price_paisa_snapshot: number;
   quantity: number;
   line_total_paisa: number;
+  notes: string | null;
+  alternative_menu_item_id: number | null;
+  alternative_menu_item_name?: string | null;
 }
 
 export async function findByIdempotencyKey(
@@ -66,16 +94,19 @@ export async function lockTeacher(db: Queryable, teacherId: number): Promise<boo
 export async function checkOrderingRules(
   db: Queryable,
   orderDate: string,
-): Promise<{ closed: boolean }> {
-  const { rows } = await db.query<{ closed: boolean }>(
+): Promise<{ closed: boolean; disabled: boolean }> {
+  const { rows } = await db.query<{ closed: boolean; disabled: boolean }>(
     `SELECT (now() AT TIME ZONE 'Asia/Dhaka') >=
             (($1::date +
               COALESCE(
                 (SELECT value #>> '{}' FROM app_settings WHERE key = 'order_placement_deadline'), '12:30'
-              )::time) AT TIME ZONE 'Asia/Dhaka') AS closed`,
+              )::time) AT TIME ZONE 'Asia/Dhaka') AS closed,
+            EXISTS (SELECT 1 FROM app_settings
+                     WHERE key = 'ordering_disabled_dates'
+                       AND value @> to_jsonb($1::text)) AS disabled`,
     [orderDate],
   );
-  return { closed: rows[0]!.closed };
+  return { closed: rows[0]!.closed, disabled: rows[0]!.disabled };
 }
 
 /**
@@ -136,7 +167,8 @@ export async function getDebtPolicy(db: Queryable): Promise<DebtPolicy> {
   const map = new Map(rows.map((r) => [r.key, r.value]));
   return {
     negativeBalanceAllowed:
-      map.get('negative_balance_allowed') === true || map.get('negative_balance_allowed') === 'true',
+      map.get('negative_balance_allowed') === true ||
+      map.get('negative_balance_allowed') === 'true',
     maxDebtPaisa: Number(map.get('max_debt_paisa') ?? 0),
     maxAdditionalOrders: Number(map.get('max_additional_orders') ?? 0),
   };
@@ -164,10 +196,7 @@ export async function countDebtOrders(db: Queryable, teacherId: number): Promise
 }
 
 /** Per-teacher extra debt headroom (paisa) granted on top of the global policy. */
-export async function getTeacherDebtAllowance(
-  db: Queryable,
-  teacherId: number,
-): Promise<number> {
+export async function getTeacherDebtAllowance(db: Queryable, teacherId: number): Promise<number> {
   const { rows } = await db.query<{ debt_allowance_paisa: number }>(
     `SELECT debt_allowance_paisa FROM users WHERE id = $1`,
     [teacherId],
@@ -253,10 +282,9 @@ export async function createOrder(
 }
 
 export async function processOrder(db: Queryable, orderId: number): Promise<void> {
-  await db.query(
-    `UPDATE orders SET status = 'ACCEPTED' WHERE id = $1 AND status = 'PENDING'`,
-    [orderId],
-  );
+  await db.query(`UPDATE orders SET status = 'ACCEPTED' WHERE id = $1 AND status = 'PENDING'`, [
+    orderId,
+  ]);
 }
 
 export async function confirmDelivery(
@@ -301,8 +329,8 @@ export async function createOrderItem(
 ): Promise<void> {
   await db.query(
     `INSERT INTO order_items
-        (order_id, menu_item_id, item_name_snapshot, unit_price_paisa_snapshot, quantity, line_total_paisa, notes)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        (order_id, menu_item_id, item_name_snapshot, unit_price_paisa_snapshot, quantity, line_total_paisa, notes, alternative_menu_item_id)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
     [
       orderId,
       item.id,
@@ -311,6 +339,7 @@ export async function createOrderItem(
       input.quantity,
       item.price_paisa * input.quantity,
       input.notes,
+      input.alternativeMenuItemId ?? null,
     ],
   );
 }
@@ -356,7 +385,14 @@ export async function insertConfirmedEvent(
 export async function findOrder(db: Queryable, orderId: number): Promise<CreatedOrder | undefined> {
   const { rows } = await db.query<CreatedOrder>(
     `SELECT o.id, to_char(o.order_date, 'YYYY-MM-DD') AS order_date,
-            o.food_location_id, l.name AS location_name, o.status, o.total_paisa, o.confirmed_at
+            o.food_location_id, l.name AS location_name, o.status, o.total_paisa, o.confirmed_at,
+            o.cancelled_at, o.cancel_reason, o.actual_cost_paisa, o.delivery_confirmed_at AS settled_at,
+            (SELECT CASE WHEN u.role = 'TEACHER' THEN 'teacher' ELSE 'staff' END FROM users u WHERE u.id = o.cancelled_by) AS cancelled_by_role,
+            COALESCE((SELECT SUM(bl.amount_paisa) FROM budget_ledger bl WHERE bl.order_id = o.id AND bl.entry_type = 'refund'), 0)::bigint AS refund_paisa,
+            ((o.order_date + COALESCE((SELECT value #>> '{}' FROM app_settings WHERE key = 'order_cancellation_deadline'), '13:00')::time) AT TIME ZONE 'Asia/Dhaka') AS cancel_deadline,
+            now() AS server_now,
+            COALESCE((SELECT json_agg(json_build_object('status', e.new_status, 'changedAt', e.created_at, 'actorRole', CASE WHEN u.role = 'TEACHER' THEN 'teacher' ELSE 'staff' END, 'note', e.note) ORDER BY e.created_at) FROM order_status_events e JOIN users u ON u.id = e.changed_by WHERE e.order_id = o.id), '[]'::json) AS status_timeline,
+            COALESCE((SELECT json_agg(json_build_object('id', bl.id, 'entryType', bl.entry_type, 'amountPaisa', bl.amount_paisa, 'createdAt', bl.created_at, 'reason', bl.reason) ORDER BY bl.created_at) FROM budget_ledger bl WHERE bl.order_id = o.id), '[]'::json) AS ledger_entries
        FROM orders o JOIN food_locations l ON l.id = o.food_location_id WHERE o.id = $1`,
     [orderId],
   );
@@ -365,9 +401,11 @@ export async function findOrder(db: Queryable, orderId: number): Promise<Created
 
 export async function findOrderItems(db: Queryable, orderId: number): Promise<OrderItemRow[]> {
   const { rows } = await db.query<OrderItemRow>(
-    `SELECT id, menu_item_id, item_name_snapshot, unit_price_paisa_snapshot,
-            quantity, line_total_paisa
-       FROM order_items WHERE order_id = $1 ORDER BY id`,
+    `SELECT oi.id, oi.menu_item_id, oi.item_name_snapshot, oi.unit_price_paisa_snapshot,
+            oi.quantity, oi.line_total_paisa, oi.notes, oi.alternative_menu_item_id,
+            alt.name AS alternative_menu_item_name
+       FROM order_items oi LEFT JOIN menu_items alt ON alt.id = oi.alternative_menu_item_id
+      WHERE oi.order_id = $1 ORDER BY oi.id`,
     [orderId],
   );
   return rows;
@@ -380,7 +418,14 @@ export async function findTeacherOrder(
 ): Promise<OrderReadRow | undefined> {
   const { rows } = await db.query<OrderReadRow>(
     `SELECT o.id, o.teacher_id, to_char(o.order_date, 'YYYY-MM-DD') AS order_date,
-            o.food_location_id, l.name AS location_name, o.status, o.total_paisa, o.confirmed_at
+            o.food_location_id, l.name AS location_name, o.status, o.total_paisa, o.confirmed_at,
+            o.cancelled_at, o.cancel_reason, o.actual_cost_paisa, o.delivery_confirmed_at AS settled_at,
+            (SELECT CASE WHEN u.role = 'TEACHER' THEN 'teacher' ELSE 'staff' END FROM users u WHERE u.id = o.cancelled_by) AS cancelled_by_role,
+            COALESCE((SELECT SUM(bl.amount_paisa) FROM budget_ledger bl WHERE bl.order_id = o.id AND bl.entry_type = 'refund'), 0)::bigint AS refund_paisa,
+            ((o.order_date + COALESCE((SELECT value #>> '{}' FROM app_settings WHERE key = 'order_cancellation_deadline'), '13:00')::time) AT TIME ZONE 'Asia/Dhaka') AS cancel_deadline,
+            now() AS server_now,
+            COALESCE((SELECT json_agg(json_build_object('status', e.new_status, 'changedAt', e.created_at, 'actorRole', CASE WHEN u.role = 'TEACHER' THEN 'teacher' ELSE 'staff' END, 'note', e.note) ORDER BY e.created_at) FROM order_status_events e JOIN users u ON u.id = e.changed_by WHERE e.order_id = o.id), '[]'::json) AS status_timeline,
+            COALESCE((SELECT json_agg(json_build_object('id', bl.id, 'entryType', bl.entry_type, 'amountPaisa', bl.amount_paisa, 'createdAt', bl.created_at, 'reason', bl.reason) ORDER BY bl.created_at) FROM budget_ledger bl WHERE bl.order_id = o.id), '[]'::json) AS ledger_entries
        FROM orders o JOIN food_locations l ON l.id = o.food_location_id
       WHERE o.id = $1 AND o.teacher_id = $2`,
     [orderId, teacherId],
@@ -399,13 +444,15 @@ export async function countTeacherOrders(
         AND ($2::date IS NULL OR order_date = $2::date)
         AND ($3::date IS NULL OR order_date >= $3::date)
         AND ($4::date IS NULL OR order_date <= $4::date)
-        AND ($5::text IS NULL OR status = $5)`,
+        AND ($5::text IS NULL OR status = $5)
+        AND ($6::text IS NULL OR id::text = $6 OR EXISTS (SELECT 1 FROM food_locations l WHERE l.id = orders.food_location_id AND l.name ILIKE '%' || $6 || '%') OR EXISTS (SELECT 1 FROM order_items i WHERE i.order_id = orders.id AND i.item_name_snapshot ILIKE '%' || $6 || '%'))`,
     [
       teacherId,
       filters.orderDate ?? null,
       filters.from ?? null,
       filters.to ?? null,
       filters.status ?? null,
+      filters.search ?? null,
     ],
   );
   return rows[0]!.total;
@@ -420,21 +467,30 @@ export async function listTeacherOrders(
 ): Promise<OrderReadRow[]> {
   const { rows } = await db.query<OrderReadRow>(
     `SELECT o.id, o.teacher_id, to_char(o.order_date, 'YYYY-MM-DD') AS order_date,
-            o.food_location_id, l.name AS location_name, o.status, o.total_paisa, o.confirmed_at
+            o.food_location_id, l.name AS location_name, o.status, o.total_paisa, o.confirmed_at,
+            o.cancelled_at, o.cancel_reason, o.actual_cost_paisa, o.delivery_confirmed_at AS settled_at,
+            (SELECT CASE WHEN u.role = 'TEACHER' THEN 'teacher' ELSE 'staff' END FROM users u WHERE u.id = o.cancelled_by) AS cancelled_by_role,
+            COALESCE((SELECT SUM(bl.amount_paisa) FROM budget_ledger bl WHERE bl.order_id = o.id AND bl.entry_type = 'refund'), 0)::bigint AS refund_paisa,
+            ((o.order_date + COALESCE((SELECT value #>> '{}' FROM app_settings WHERE key = 'order_cancellation_deadline'), '13:00')::time) AT TIME ZONE 'Asia/Dhaka') AS cancel_deadline,
+            now() AS server_now,
+            COALESCE((SELECT json_agg(json_build_object('status', e.new_status, 'changedAt', e.created_at, 'actorRole', CASE WHEN u.role = 'TEACHER' THEN 'teacher' ELSE 'staff' END, 'note', e.note) ORDER BY e.created_at) FROM order_status_events e JOIN users u ON u.id = e.changed_by WHERE e.order_id = o.id), '[]'::json) AS status_timeline,
+            COALESCE((SELECT json_agg(json_build_object('id', bl.id, 'entryType', bl.entry_type, 'amountPaisa', bl.amount_paisa, 'createdAt', bl.created_at, 'reason', bl.reason) ORDER BY bl.created_at) FROM budget_ledger bl WHERE bl.order_id = o.id), '[]'::json) AS ledger_entries
        FROM orders o JOIN food_locations l ON l.id = o.food_location_id
       WHERE o.teacher_id = $1
         AND ($2::date IS NULL OR o.order_date = $2::date)
         AND ($3::date IS NULL OR o.order_date >= $3::date)
         AND ($4::date IS NULL OR o.order_date <= $4::date)
         AND ($5::text IS NULL OR o.status = $5)
+        AND ($6::text IS NULL OR o.id::text = $6 OR l.name ILIKE '%' || $6 || '%' OR EXISTS (SELECT 1 FROM order_items i WHERE i.order_id = o.id AND i.item_name_snapshot ILIKE '%' || $6 || '%'))
       ORDER BY o.order_date DESC, o.created_at DESC, o.id DESC
-      LIMIT $6 OFFSET $7`,
+      LIMIT $7 OFFSET $8`,
     [
       teacherId,
       filters.orderDate ?? null,
       filters.from ?? null,
       filters.to ?? null,
       filters.status ?? null,
+      filters.search ?? null,
       limit,
       offset,
     ],
@@ -445,9 +501,11 @@ export async function listTeacherOrders(
 export async function findItemsForOrders(db: Queryable, orderIds: number[]) {
   if (orderIds.length === 0) return [];
   const { rows } = await db.query<OrderItemRow & { order_id: number }>(
-    `SELECT order_id, id, menu_item_id, item_name_snapshot, unit_price_paisa_snapshot,
-            quantity, line_total_paisa
-       FROM order_items WHERE order_id = ANY($1::bigint[]) ORDER BY order_id, id`,
+    `SELECT oi.order_id, oi.id, oi.menu_item_id, oi.item_name_snapshot, oi.unit_price_paisa_snapshot,
+            oi.quantity, oi.line_total_paisa, oi.notes, oi.alternative_menu_item_id,
+            alt.name AS alternative_menu_item_name
+       FROM order_items oi LEFT JOIN menu_items alt ON alt.id = oi.alternative_menu_item_id
+      WHERE oi.order_id = ANY($1::bigint[]) ORDER BY oi.order_id, oi.id`,
     [orderIds],
   );
   return rows;
@@ -459,7 +517,14 @@ export async function lockOrderForCancellation(
 ): Promise<OrderReadRow | undefined> {
   const { rows } = await db.query<OrderReadRow>(
     `SELECT o.id, o.teacher_id, to_char(o.order_date, 'YYYY-MM-DD') AS order_date,
-            o.food_location_id, l.name AS location_name, o.status, o.total_paisa, o.confirmed_at
+            o.food_location_id, l.name AS location_name, o.status, o.total_paisa, o.confirmed_at,
+            o.cancelled_at, o.cancel_reason, o.actual_cost_paisa, o.delivery_confirmed_at AS settled_at,
+            (SELECT CASE WHEN u.role = 'TEACHER' THEN 'teacher' ELSE 'staff' END FROM users u WHERE u.id = o.cancelled_by) AS cancelled_by_role,
+            COALESCE((SELECT SUM(bl.amount_paisa) FROM budget_ledger bl WHERE bl.order_id = o.id AND bl.entry_type = 'refund'), 0)::bigint AS refund_paisa,
+            ((o.order_date + COALESCE((SELECT value #>> '{}' FROM app_settings WHERE key = 'order_cancellation_deadline'), '13:00')::time) AT TIME ZONE 'Asia/Dhaka') AS cancel_deadline,
+            now() AS server_now,
+            COALESCE((SELECT json_agg(json_build_object('status', e.new_status, 'changedAt', e.created_at, 'actorRole', CASE WHEN u.role = 'TEACHER' THEN 'teacher' ELSE 'staff' END, 'note', e.note) ORDER BY e.created_at) FROM order_status_events e JOIN users u ON u.id = e.changed_by WHERE e.order_id = o.id), '[]'::json) AS status_timeline,
+            COALESCE((SELECT json_agg(json_build_object('id', bl.id, 'entryType', bl.entry_type, 'amountPaisa', bl.amount_paisa, 'createdAt', bl.created_at, 'reason', bl.reason) ORDER BY bl.created_at) FROM budget_ledger bl WHERE bl.order_id = o.id), '[]'::json) AS ledger_entries
        FROM orders o JOIN food_locations l ON l.id = o.food_location_id
       WHERE o.id = $1 FOR UPDATE OF o`,
     [orderId],
@@ -501,11 +566,16 @@ export async function findOrderDebitRecord(
   return rows[0];
 }
 
-export async function cancelOrder(db: Queryable, orderId: number): Promise<void> {
+export async function cancelOrder(
+  db: Queryable,
+  orderId: number,
+  actorId: number,
+  reason: string,
+): Promise<void> {
   await db.query(
-    `UPDATE orders SET status = 'CANCELLED', cancelled_at = now()
+    `UPDATE orders SET status = 'CANCELLED', cancelled_at = now(), cancelled_by = $2, cancel_reason = $3
       WHERE id = $1 AND status IN ('PENDING', 'ACCEPTED', 'CONFIRMED')`,
-    [orderId],
+    [orderId, actorId, reason],
   );
 }
 
@@ -542,12 +612,13 @@ export async function insertRefund(
 export async function insertCancelledEvent(
   db: Queryable,
   orderId: number,
+  oldStatus: string,
   actorId: number,
   reason: string,
 ): Promise<void> {
   await db.query(
     `INSERT INTO order_status_events (order_id, old_status, new_status, changed_by, note)
-     VALUES ($1, 'CONFIRMED', 'CANCELLED', $2, $3)`,
-    [orderId, actorId, reason],
+     VALUES ($1, $2, 'CANCELLED', $3, $4)`,
+    [orderId, oldStatus, actorId, reason],
   );
 }

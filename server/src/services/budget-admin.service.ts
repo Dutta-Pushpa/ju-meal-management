@@ -4,6 +4,7 @@ import { conflict, notFound } from '../utils/errors.js';
 import { isExclusionViolation, isUniqueViolation } from '../utils/pg-errors.js';
 import { writeAudit } from '../models/audit.model.js';
 import * as budget from '../models/budget.model.js';
+import type { LedgerFilters } from '../models/budget.model.js';
 
 export async function createBudgetPeriod(
   db: Database,
@@ -154,9 +155,10 @@ export async function getBudgetLedger(
   month: number,
   page: number,
   perPage: number,
+  filters: LedgerFilters = {},
 ) {
   if (!(await budget.teacherExists(db, teacherId))) throw notFound('Teacher not found.');
-  const total = await budget.countLedgerEntries(db, teacherId, year, month);
+  const total = await budget.countLedgerEntries(db, teacherId, year, month, filters);
   const entries = await budget.listLedgerEntries(
     db,
     teacherId,
@@ -164,6 +166,7 @@ export async function getBudgetLedger(
     month,
     perPage,
     (page - 1) * perPage,
+    filters,
   );
   return { entries, total };
 }
@@ -244,7 +247,11 @@ export async function getBudgetHistory(
     });
   }
   const startYearMonth = months[0]!.year * 100 + months[0]!.month;
-  const rows = await budget.listMonthlyAllocationsWindow(db, startYearMonth, anchorYear * 100 + anchorMonth);
+  const rows = await budget.listMonthlyAllocationsWindow(
+    db,
+    startYearMonth,
+    anchorYear * 100 + anchorMonth,
+  );
   const byMonth = new Map(months.map((m) => [m.year * 100 + m.month, m]));
   for (const row of rows) {
     const bucket = byMonth.get(row.year * 100 + row.month);

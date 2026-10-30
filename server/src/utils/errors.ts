@@ -11,6 +11,7 @@ export class AppError extends Error {
   readonly code: ErrorCode;
   readonly status: number;
   readonly details: FieldIssue[] | undefined;
+  readonly data: Record<string, unknown> | undefined;
   /** Set when the error is caused by a fault on our side rather than the request. */
   readonly expose: boolean;
 
@@ -19,6 +20,7 @@ export class AppError extends Error {
     message: string;
     status: number;
     details?: FieldIssue[];
+    data?: Record<string, unknown>;
     cause?: unknown;
   }) {
     super(options.message, options.cause !== undefined ? { cause: options.cause } : undefined);
@@ -26,6 +28,7 @@ export class AppError extends Error {
     this.code = options.code;
     this.status = options.status;
     this.details = options.details;
+    this.data = options.data;
     this.expose = options.status < 500;
     Error.captureStackTrace?.(this, AppError);
   }
@@ -43,8 +46,8 @@ export const forbidden = (message = 'You do not have permission to perform this 
 export const notFound = (message = 'Resource not found.') =>
   new AppError({ code: 'NOT_FOUND', message, status: 404 });
 
-export const conflict = (code: ErrorCode, message: string) =>
-  new AppError({ code, message, status: 409 });
+export const conflict = (code: ErrorCode, message: string, data?: Record<string, unknown>) =>
+  new AppError({ code, message, status: 409, ...(data ? { data } : {}) });
 
 export const unprocessable = (code: ErrorCode, message: string) =>
   new AppError({ code, message, status: 422 });

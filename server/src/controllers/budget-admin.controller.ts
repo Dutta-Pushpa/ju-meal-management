@@ -3,6 +3,7 @@ import type { Database } from '../db/pool.js';
 import { currentUser } from '../middleware/auth.js';
 import { badRequest } from '../utils/errors.js';
 import { requireInt, requireObject, requireString } from '../utils/validation.js';
+import type { LedgerFilters } from '../models/budget.model.js';
 import {
   adjustBudget,
   allocateBudget,
@@ -107,8 +108,9 @@ export function getBudgetLedger(db: Database) {
     const teacherId = readQueryInt(req, 'teacherId');
     const { year, month } = readYearMonth(req.query);
     const page = readOptionalQueryInt(req, 'page', 1, 1_000_000);
-    const perPage = readOptionalQueryInt(req, 'perPage', 20, 100);
-    const result = await getBudgetLedgerService(db, teacherId, year, month, page, perPage);
+    const perPage = readOptionalQueryInt(req, 'perPage', 20, 20);
+    const filters = readLedgerFilters(req);
+    const result = await getBudgetLedgerService(db, teacherId, year, month, page, perPage, filters);
     res.status(200).json({
       data: result.entries.map(presentBudgetEntry),
       meta: { total: result.total, page, perPage },
@@ -183,6 +185,38 @@ function requireBusinessDate(value: unknown, field: string): string {
     throw badRequest(`${field} must be a valid date in YYYY-MM-DD format.`);
   }
   return date;
+}
+
+function readLedgerFilters(req: Request): LedgerFilters {
+  const from = readOptionalDate(req, 'from');
+  const to = readOptionalDate(req, 'to');
+  if (from && to && from > to) throw badRequest('from must be on or before to.');
+  const status = req.query['status'];
+  if (status === undefined) return { ...(from ? { from } : {}), ...(to ? { to } : {}) };
+  if (
+    typeof status !== 'string' ||
+    !['allocation', 'debit', 'refund', 'adjustment'].includes(status)
+  ) {
+    throw badRequest('status must be allocation, debit, refund, or adjustment.');
+  }
+  return {
+    ...(from ? { from } : {}),
+    ...(to ? { to } : {}),
+    status: status as NonNullable<LedgerFilters['status']>,
+  };
+}
+
+function readOptionalDate(req: Request, key: string): string | undefined {
+  const value = req.query[key];
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw badRequest(`${key} must be a valid date in YYYY-MM-DD format.`);
+  }
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(parsed.valueOf()) || parsed.toISOString().slice(0, 10) !== value) {
+    throw badRequest(`${key} must be a valid date in YYYY-MM-DD format.`);
+  }
+  return value;
 }
 
 function readQueryInt(req: Request, key: string): number {

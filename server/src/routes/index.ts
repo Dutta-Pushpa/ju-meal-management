@@ -11,6 +11,7 @@ import { createStaffOrderRouter } from './staff-order.routes.js';
 import { createStaffReportRouter } from './staff-report.routes.js';
 import { createSettingsRouter } from './settings.routes.js';
 import { createUserAdminRouter } from './user-admin.routes.js';
+import { createOrderingRouter } from './ordering.routes.js';
 
 /**
  * The API router. Everything versioned and authenticated is mounted here,
@@ -44,12 +45,13 @@ export function createApiRouter(deps: {
   router.use('/staff', createStaffOrderRouter({ db: deps.db, config: deps.config }));
   router.use('/staff', createStaffReportRouter({ db: deps.db, jwtSecret: deps.config.JWT_SECRET }));
   router.use('/staff', createSettingsRouter({ db: deps.db, jwtSecret: deps.config.JWT_SECRET }));
-  router.use('/staff', createUserAdminRouter({ db: deps.db, jwtSecret: deps.config.JWT_SECRET }));
+  router.use('/staff', createUserAdminRouter({ db: deps.db, config: deps.config }));
   router.use(
     '/teacher',
     createTeacherBudgetRouter({ db: deps.db, jwtSecret: deps.config.JWT_SECRET }),
   );
   router.use('/orders', createOrderRouter({ db: deps.db, config: deps.config }));
+  router.use('/ordering', createOrderingRouter({ db: deps.db, jwtSecret: deps.config.JWT_SECRET }));
 
   return router;
 }

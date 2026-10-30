@@ -192,9 +192,11 @@ export async function findStaffOrderItems(
 ): Promise<Array<OrderItemRow & { order_id: number }>> {
   if (orderIds.length === 0) return [];
   const { rows } = await db.query<OrderItemRow & { order_id: number }>(
-    `SELECT order_id, id, menu_item_id, item_name_snapshot, unit_price_paisa_snapshot,
-            quantity, line_total_paisa
-       FROM order_items WHERE order_id = ANY($1::bigint[]) ORDER BY order_id, id`,
+    `SELECT oi.order_id, oi.id, oi.menu_item_id, oi.item_name_snapshot, oi.unit_price_paisa_snapshot,
+            oi.quantity, oi.line_total_paisa, oi.notes, oi.alternative_menu_item_id,
+            alt.name AS alternative_menu_item_name
+       FROM order_items oi LEFT JOIN menu_items alt ON alt.id = oi.alternative_menu_item_id
+      WHERE oi.order_id = ANY($1::bigint[]) ORDER BY oi.order_id, oi.id`,
     [orderIds],
   );
   return rows;

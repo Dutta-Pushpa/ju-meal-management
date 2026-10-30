@@ -5,6 +5,8 @@ import type { Database } from '../db/pool.js';
 import type { AppConfig } from '../config/env.js';
 import {
   login,
+  changePassword,
+  resetPassword,
   logout,
   me,
   register,
@@ -73,6 +75,25 @@ export function createAuthRouter(deps: {
     router.post('/register', requireAuth(auth), requireRole('ADMIN'), register(controllerDeps));
   }
   router.post('/login', loginLimiter, login(controllerDeps));
+  const credentialLimiter = rateLimit({
+    windowMs: deps.config.RATE_LIMIT_WINDOW_MINUTES * 60_000,
+    limit: 5,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    message: {
+      error: {
+        code: 'RATE_LIMITED',
+        message: 'Too many password attempts. Please wait before trying again.',
+      },
+    } satisfies ApiErrorResponse,
+  });
+  router.post(
+    '/change-password',
+    credentialLimiter,
+    requireAuth(auth),
+    changePassword(controllerDeps),
+  );
+  router.post('/reset-password', credentialLimiter, resetPassword(controllerDeps));
   router.post('/logout', requireAuth(auth), logout(controllerDeps));
 
   router.get('/me', requireAuth(auth), me());

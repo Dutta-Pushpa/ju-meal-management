@@ -32,6 +32,8 @@ export function presentMenu(location: LocationRow, items: MenuItemRow[]) {
         category: item.category,
         price: presentPrice(item.price_paisa),
         isAvailable: item.is_available,
+        availabilityLabel: item.is_available ? 'Available' : 'Sold out',
+        orderable: item.is_available,
       })),
     },
   };

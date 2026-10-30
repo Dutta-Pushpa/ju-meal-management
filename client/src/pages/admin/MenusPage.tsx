@@ -47,7 +47,7 @@ export function AdminMenus({ token }: { token: string }) {
       setItems(menuData);
       setLocations(locationData);
       if (!form.foodLocationId && locationData[0])
-        setForm((f) => ({ ...f, foodLocationId: String(locationData[0]!.id) }));
+        setForm((f) => ({ ...f, foodLocationId: String(locationData[0].id) }));
     } catch (e) {
       setError(asMessage(e));
     } finally {
@@ -338,4 +338,3 @@ function foodSymbol(category: string | null | undefined) {
   const value = (category || '').toLowerCase();
   return value.includes('drink') ? '◉' : value.includes('snack') ? '✦' : '◒';
 }
-
