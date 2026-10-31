@@ -382,12 +382,13 @@ export async function insertConfirmedEvent(
   );
 }
 
+/** Read optional fields from row JSON so history remains available before additive audit migrations deploy. */
 export async function findOrder(db: Queryable, orderId: number): Promise<CreatedOrder | undefined> {
   const { rows } = await db.query<CreatedOrder>(
     `SELECT o.id, to_char(o.order_date, 'YYYY-MM-DD') AS order_date,
             o.food_location_id, l.name AS location_name, o.status, o.total_paisa, o.confirmed_at,
-            o.cancelled_at, o.cancel_reason, o.actual_cost_paisa, o.delivery_confirmed_at AS settled_at,
-            (SELECT CASE WHEN u.role = 'TEACHER' THEN 'teacher' ELSE 'staff' END FROM users u WHERE u.id = o.cancelled_by) AS cancelled_by_role,
+            o.cancelled_at, to_jsonb(o)->>'cancel_reason' AS cancel_reason, o.actual_cost_paisa, o.delivery_confirmed_at AS settled_at,
+            (SELECT CASE WHEN u.role = 'TEACHER' THEN 'teacher' ELSE 'staff' END FROM users u WHERE u.id = NULLIF(to_jsonb(o)->>'cancelled_by', '')::bigint) AS cancelled_by_role,
             COALESCE((SELECT SUM(bl.amount_paisa) FROM budget_ledger bl WHERE bl.order_id = o.id AND bl.entry_type = 'refund'), 0)::bigint AS refund_paisa,
             ((o.order_date + COALESCE((SELECT value #>> '{}' FROM app_settings WHERE key = 'order_cancellation_deadline'), '13:00')::time) AT TIME ZONE 'Asia/Dhaka') AS cancel_deadline,
             now() AS server_now,
@@ -402,9 +403,11 @@ export async function findOrder(db: Queryable, orderId: number): Promise<Created
 export async function findOrderItems(db: Queryable, orderId: number): Promise<OrderItemRow[]> {
   const { rows } = await db.query<OrderItemRow>(
     `SELECT oi.id, oi.menu_item_id, oi.item_name_snapshot, oi.unit_price_paisa_snapshot,
-            oi.quantity, oi.line_total_paisa, oi.notes, oi.alternative_menu_item_id,
+            oi.quantity, oi.line_total_paisa, oi.notes,
+            NULLIF(to_jsonb(oi)->>'alternative_menu_item_id', '')::bigint AS alternative_menu_item_id,
             alt.name AS alternative_menu_item_name
-       FROM order_items oi LEFT JOIN menu_items alt ON alt.id = oi.alternative_menu_item_id
+       FROM order_items oi
+       LEFT JOIN menu_items alt ON alt.id = NULLIF(to_jsonb(oi)->>'alternative_menu_item_id', '')::bigint
       WHERE oi.order_id = $1 ORDER BY oi.id`,
     [orderId],
   );
@@ -419,8 +422,8 @@ export async function findTeacherOrder(
   const { rows } = await db.query<OrderReadRow>(
     `SELECT o.id, o.teacher_id, to_char(o.order_date, 'YYYY-MM-DD') AS order_date,
             o.food_location_id, l.name AS location_name, o.status, o.total_paisa, o.confirmed_at,
-            o.cancelled_at, o.cancel_reason, o.actual_cost_paisa, o.delivery_confirmed_at AS settled_at,
-            (SELECT CASE WHEN u.role = 'TEACHER' THEN 'teacher' ELSE 'staff' END FROM users u WHERE u.id = o.cancelled_by) AS cancelled_by_role,
+            o.cancelled_at, to_jsonb(o)->>'cancel_reason' AS cancel_reason, o.actual_cost_paisa, o.delivery_confirmed_at AS settled_at,
+            (SELECT CASE WHEN u.role = 'TEACHER' THEN 'teacher' ELSE 'staff' END FROM users u WHERE u.id = NULLIF(to_jsonb(o)->>'cancelled_by', '')::bigint) AS cancelled_by_role,
             COALESCE((SELECT SUM(bl.amount_paisa) FROM budget_ledger bl WHERE bl.order_id = o.id AND bl.entry_type = 'refund'), 0)::bigint AS refund_paisa,
             ((o.order_date + COALESCE((SELECT value #>> '{}' FROM app_settings WHERE key = 'order_cancellation_deadline'), '13:00')::time) AT TIME ZONE 'Asia/Dhaka') AS cancel_deadline,
             now() AS server_now,
@@ -468,8 +471,8 @@ export async function listTeacherOrders(
   const { rows } = await db.query<OrderReadRow>(
     `SELECT o.id, o.teacher_id, to_char(o.order_date, 'YYYY-MM-DD') AS order_date,
             o.food_location_id, l.name AS location_name, o.status, o.total_paisa, o.confirmed_at,
-            o.cancelled_at, o.cancel_reason, o.actual_cost_paisa, o.delivery_confirmed_at AS settled_at,
-            (SELECT CASE WHEN u.role = 'TEACHER' THEN 'teacher' ELSE 'staff' END FROM users u WHERE u.id = o.cancelled_by) AS cancelled_by_role,
+            o.cancelled_at, to_jsonb(o)->>'cancel_reason' AS cancel_reason, o.actual_cost_paisa, o.delivery_confirmed_at AS settled_at,
+            (SELECT CASE WHEN u.role = 'TEACHER' THEN 'teacher' ELSE 'staff' END FROM users u WHERE u.id = NULLIF(to_jsonb(o)->>'cancelled_by', '')::bigint) AS cancelled_by_role,
             COALESCE((SELECT SUM(bl.amount_paisa) FROM budget_ledger bl WHERE bl.order_id = o.id AND bl.entry_type = 'refund'), 0)::bigint AS refund_paisa,
             ((o.order_date + COALESCE((SELECT value #>> '{}' FROM app_settings WHERE key = 'order_cancellation_deadline'), '13:00')::time) AT TIME ZONE 'Asia/Dhaka') AS cancel_deadline,
             now() AS server_now,
@@ -502,9 +505,11 @@ export async function findItemsForOrders(db: Queryable, orderIds: number[]) {
   if (orderIds.length === 0) return [];
   const { rows } = await db.query<OrderItemRow & { order_id: number }>(
     `SELECT oi.order_id, oi.id, oi.menu_item_id, oi.item_name_snapshot, oi.unit_price_paisa_snapshot,
-            oi.quantity, oi.line_total_paisa, oi.notes, oi.alternative_menu_item_id,
+            oi.quantity, oi.line_total_paisa, oi.notes,
+            NULLIF(to_jsonb(oi)->>'alternative_menu_item_id', '')::bigint AS alternative_menu_item_id,
             alt.name AS alternative_menu_item_name
-       FROM order_items oi LEFT JOIN menu_items alt ON alt.id = oi.alternative_menu_item_id
+       FROM order_items oi
+       LEFT JOIN menu_items alt ON alt.id = NULLIF(to_jsonb(oi)->>'alternative_menu_item_id', '')::bigint
       WHERE oi.order_id = ANY($1::bigint[]) ORDER BY oi.order_id, oi.id`,
     [orderIds],
   );
@@ -518,8 +523,8 @@ export async function lockOrderForCancellation(
   const { rows } = await db.query<OrderReadRow>(
     `SELECT o.id, o.teacher_id, to_char(o.order_date, 'YYYY-MM-DD') AS order_date,
             o.food_location_id, l.name AS location_name, o.status, o.total_paisa, o.confirmed_at,
-            o.cancelled_at, o.cancel_reason, o.actual_cost_paisa, o.delivery_confirmed_at AS settled_at,
-            (SELECT CASE WHEN u.role = 'TEACHER' THEN 'teacher' ELSE 'staff' END FROM users u WHERE u.id = o.cancelled_by) AS cancelled_by_role,
+            o.cancelled_at, to_jsonb(o)->>'cancel_reason' AS cancel_reason, o.actual_cost_paisa, o.delivery_confirmed_at AS settled_at,
+            (SELECT CASE WHEN u.role = 'TEACHER' THEN 'teacher' ELSE 'staff' END FROM users u WHERE u.id = NULLIF(to_jsonb(o)->>'cancelled_by', '')::bigint) AS cancelled_by_role,
             COALESCE((SELECT SUM(bl.amount_paisa) FROM budget_ledger bl WHERE bl.order_id = o.id AND bl.entry_type = 'refund'), 0)::bigint AS refund_paisa,
             ((o.order_date + COALESCE((SELECT value #>> '{}' FROM app_settings WHERE key = 'order_cancellation_deadline'), '13:00')::time) AT TIME ZONE 'Asia/Dhaka') AS cancel_deadline,
             now() AS server_now,

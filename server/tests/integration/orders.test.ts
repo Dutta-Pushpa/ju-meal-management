@@ -297,6 +297,15 @@ describe('POST /api/orders', () => {
     expect(teacherCancel.status).toBe(200);
     expect(teacherCancel.body.data.status).toBe('CANCELLED');
     expect(await query("SELECT id FROM budget_ledger WHERE entry_type = 'refund'")).toHaveLength(1);
+    const cancelledHistory = await request(app)
+      .get('/api/orders/mine?page=1&pageSize=5')
+      .set(auth(teacherToken));
+    expect(cancelledHistory.status).toBe(200);
+    expect(cancelledHistory.body.data[0]).toMatchObject({
+      status: 'CANCELLED',
+      cancelledBy: 'teacher',
+      cancelReason: 'changed my mind',
+    });
     const repeatedCancel = await request(app)
       .post(`/api/orders/${created.body.data.id}/cancel`)
       .set(auth(teacherToken))
