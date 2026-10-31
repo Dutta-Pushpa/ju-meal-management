@@ -140,19 +140,19 @@ erDiagram
 
 Every teacher, staff member, and administrator.
 
-| Column                      | Type          | Notes                                                                           |
-| --------------------------- | ------------- | ------------------------------------------------------------------------------- |
-| `id`                        | `bigserial`   | Primary key                                                                     |
-| `full_name`                 | `text`        | Required                                                                        |
-| `email`                     | `text`        | Required, **unique**, stored lower-cased                                        |
-| `password_hash`             | `text`        | bcrypt hash, always with the `$2b$` prefix. Plaintext is never stored or logged |
-| `role`                      | `text`        | `TEACHER`, `STAFF`, or `ADMIN`, enforced by a `CHECK` constraint                |
-| `designation`               | `text`        | Academic or staff designation (e.g. Professor, Lecturer). Nullable              |
-| `permissions`               | `jsonb`       | Legacy column, always `[]`. Access is purely role-based; kept only so old data retains meaning |
+| Column                      | Type          | Notes                                                                                                                               |
+| --------------------------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                        | `bigserial`   | Primary key                                                                                                                         |
+| `full_name`                 | `text`        | Required                                                                                                                            |
+| `email`                     | `text`        | Required, **unique**, stored lower-cased                                                                                            |
+| `password_hash`             | `text`        | bcrypt hash, always with the `$2b$` prefix. Plaintext is never stored or logged                                                     |
+| `role`                      | `text`        | `TEACHER`, `STAFF`, or `ADMIN`, enforced by a `CHECK` constraint                                                                    |
+| `designation`               | `text`        | Academic or staff designation (e.g. Professor, Lecturer). Nullable                                                                  |
+| `permissions`               | `jsonb`       | Legacy column, always `[]`. Access is purely role-based; kept only so old data retains meaning                                      |
 | `debt_allowance_paisa`      | `bigint`      | Extra debt headroom granted on top of the global `max_debt_paisa` policy, typically via an approved budget request. Defaults to `0` |
-| `is_active`                 | `boolean`     | A deactivated user cannot log in and their tokens stop working                  |
-| `token_version`             | `integer`     | Embedded in every JWT. Incrementing it revokes all of that user's tokens        |
-| `created_at` / `updated_at` | `timestamptz` |                                                                                 |
+| `is_active`                 | `boolean`     | A deactivated user cannot log in and their tokens stop working                                                                      |
+| `token_version`             | `integer`     | Embedded in every JWT. Incrementing it revokes all of that user's tokens                                                            |
+| `created_at` / `updated_at` | `timestamptz` |                                                                                                                                     |
 
 Indexes: unique on `email`, index on `role` for staff listings.
 
@@ -268,17 +268,17 @@ append-only and rows are never updated or deleted.
 Teacher requests for additional budget or extra personal debt allowance,
 approved or rejected by an administrator.
 
-| Column          | Type          | Notes                                                                       |
-| --------------- | ------------- | --------------------------------------------------------------------------- |
-| `id`            | `bigserial`   | Primary key                                                                 |
-| `teacher_id`    | `bigint`      | Foreign key to `users`                                                      |
-| `request_type`  | `text`        | `budget_increase` (adds to the current month's budget) or `debt_allowance` (raises `users.debt_allowance_paisa`) |
-| `amount_paisa`  | `bigint`      | Positive, enforced by a `CHECK` constraint                                  |
-| `reason`        | `text`        | Why the teacher needs it                                                    |
-| `status`        | `text`        | `pending`, `approved`, or `rejected`                                        |
-| `decided_by`    | `bigint`      | Nullable foreign key to `users`, the deciding administrator                  |
-| `decided_at`    | `timestamptz` | Nullable                                                                     |
-| `created_at`    | `timestamptz` |                                                                              |
+| Column         | Type          | Notes                                                                                                            |
+| -------------- | ------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `id`           | `bigserial`   | Primary key                                                                                                      |
+| `teacher_id`   | `bigint`      | Foreign key to `users`                                                                                           |
+| `request_type` | `text`        | `budget_increase` (adds to the current month's budget) or `debt_allowance` (raises `users.debt_allowance_paisa`) |
+| `amount_paisa` | `bigint`      | Positive, enforced by a `CHECK` constraint                                                                       |
+| `reason`       | `text`        | Why the teacher needs it                                                                                         |
+| `status`       | `text`        | `pending`, `approved`, or `rejected`                                                                             |
+| `decided_by`   | `bigint`      | Nullable foreign key to `users`, the deciding administrator                                                      |
+| `decided_at`   | `timestamptz` | Nullable                                                                                                         |
+| `created_at`   | `timestamptz` |                                                                                                                  |
 
 Approving a `budget_increase` writes a positive `adjustment` ledger entry for
 the teacher's current Dhaka month. Approving a `debt_allowance` increments the
@@ -287,22 +287,22 @@ top of the global `max_debt_paisa` policy.
 
 ### `orders`
 
-| Column                      | Type          | Notes                                              |
-| --------------------------- | ------------- | -------------------------------------------------- |
-| `id`                        | `bigserial`   | Primary key                                        |
-| `teacher_id`                | `bigint`      | Foreign key to `users`                             |
-| `food_location_id`          | `bigint`      | Foreign key. One location per order, per policy P2 |
-| `order_date`                | `date`        | The `Asia/Dhaka` business date                     |
-| `status`                    | `text`        | `CONFIRMED`, `COLLECTED`, `DELIVERED`, `CANCELLED` |
-| `total_paisa`               | `bigint`      | Server-calculated; updated to the actual cost when a delivery is reconciled |
-| `idempotency_key`           | `text`        | Nullable                                           |
-| `alternative_item_name`     | `text`        | Nullable. The fallback dish the teacher declared, or what staff actually served |
-| `alternative_unit_price_paisa` | `bigint`   | Nullable. Declared unit price of the alternative dish              |
-| `actual_cost_paisa`         | `bigint`      | Nullable. Actual delivered cost, set when delivery is reconciled    |
-| `delivery_confirmed_at` / `delivery_confirmed_by` | | Nullable. Set when the order is marked delivered |
-| `confirmed_at`              | `timestamptz` |                                                    |
-| `cancelled_at`              | `timestamptz` | Nullable                                           |
-| `created_at` / `updated_at` | `timestamptz` |                                                    |
+| Column                                            | Type          | Notes                                                                           |
+| ------------------------------------------------- | ------------- | ------------------------------------------------------------------------------- |
+| `id`                                              | `bigserial`   | Primary key                                                                     |
+| `teacher_id`                                      | `bigint`      | Foreign key to `users`                                                          |
+| `food_location_id`                                | `bigint`      | Foreign key. One location per order, per policy P2                              |
+| `order_date`                                      | `date`        | The `Asia/Dhaka` business date                                                  |
+| `status`                                          | `text`        | `CONFIRMED`, `COLLECTED`, `DELIVERED`, `CANCELLED`                              |
+| `total_paisa`                                     | `bigint`      | Server-calculated; updated to the actual cost when a delivery is reconciled     |
+| `idempotency_key`                                 | `text`        | Nullable                                                                        |
+| `alternative_item_name`                           | `text`        | Nullable. The fallback dish the teacher declared, or what staff actually served |
+| `alternative_unit_price_paisa`                    | `bigint`      | Nullable. Declared unit price of the alternative dish                           |
+| `actual_cost_paisa`                               | `bigint`      | Nullable. Actual delivered cost, set when delivery is reconciled                |
+| `delivery_confirmed_at` / `delivery_confirmed_by` |               | Nullable. Set when the order is marked delivered                                |
+| `confirmed_at`                                    | `timestamptz` |                                                                                 |
+| `cancelled_at`                                    | `timestamptz` | Nullable                                                                        |
+| `created_at` / `updated_at`                       | `timestamptz` |                                                                                 |
 
 **Unique constraint** on `(teacher_id, idempotency_key)` where the key is not
 null. This is what prevents a double-click or a network retry from creating two

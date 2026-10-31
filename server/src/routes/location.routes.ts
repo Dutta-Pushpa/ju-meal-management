@@ -20,10 +20,7 @@ import { getMenu } from '../controllers/menu.controller.js';
  */
 export const TIMEZONE = 'Asia/Dhaka';
 
-export function createLocationRouter(deps: {
-  db: Database;
-  jwtSecret: string;
-}): Router {
+export function createLocationRouter(deps: { db: Database; jwtSecret: string }): Router {
   const router = Router();
 
   const auth = { db: deps.db, jwtSecret: deps.jwtSecret };

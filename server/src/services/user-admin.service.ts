@@ -24,10 +24,7 @@ export async function updateUser(
 
     // Prevent self-deactivation
     if (current.id === input.actorId && !isActive) {
-      throw unprocessable(
-        'INVALID_STATUS_TRANSITION',
-        'You cannot deactivate your own account.',
-      );
+      throw unprocessable('INVALID_STATUS_TRANSITION', 'You cannot deactivate your own account.');
     }
 
     // The last active administrator cannot be deactivated

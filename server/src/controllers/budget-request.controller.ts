@@ -60,8 +60,7 @@ export function staffListRequests(db: Database) {
     const page = readQueryInt(req, 'page', 1);
     const perPage = readQueryInt(req, 'perPage', 50, MAX_PAGE_SIZE);
     const teacherIdRaw = req.query['teacherId'];
-    const teacherId =
-      teacherIdRaw === undefined ? undefined : readQueryInt(req, 'teacherId', 1);
+    const teacherId = teacherIdRaw === undefined ? undefined : readQueryInt(req, 'teacherId', 1);
     const result = await listBudgetRequests(
       db,
       { status: readStatus(req), teacherId },
@@ -82,7 +81,8 @@ export function decideRequest(db: Database) {
     const id = requireInt(Number(req.params['id']), 'id', { min: 1 });
     const body = requireObject(req.body ?? {}, 'body');
     const decision = requireEnum(body['decision'], 'decision', ['approved', 'rejected'] as const);
-    const note = typeof body['note'] === 'string' && body['note'].trim() ? body['note'].trim() : undefined;
+    const note =
+      typeof body['note'] === 'string' && body['note'].trim() ? body['note'].trim() : undefined;
     const result = await decideBudgetRequest(db, {
       requestId: id,
       decision,
@@ -102,7 +102,12 @@ function readStatus(req: Request): string | undefined {
   return raw;
 }
 
-function readQueryInt(req: Request, key: string, fallback: number, max = Number.MAX_SAFE_INTEGER): number {
+function readQueryInt(
+  req: Request,
+  key: string,
+  fallback: number,
+  max = Number.MAX_SAFE_INTEGER,
+): number {
   const raw = req.query[key];
   if (raw === undefined) return fallback;
   if (typeof raw !== 'string' || !/^\d+$/.test(raw)) {

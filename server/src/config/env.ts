@@ -21,21 +21,12 @@ import {
  */
 
 export const NODE_ENVS = ['development', 'test', 'production'] as const;
-export const LOG_LEVELS = [
-  'fatal',
-  'error',
-  'warn',
-  'info',
-  'debug',
-  'trace',
-  'silent',
-] as const;
+export const LOG_LEVELS = ['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'] as const;
 
 export type NodeEnv = (typeof NODE_ENVS)[number];
 export type LogLevel = (typeof LOG_LEVELS)[number];
 
-const EXAMPLE_SECRET =
-  'replace-this-with-a-long-random-string-at-least-32-chars';
+const EXAMPLE_SECRET = 'replace-this-with-a-long-random-string-at-least-32-chars';
 
 export interface AppConfig {
   ADMIN_KEY?: string;
@@ -66,9 +57,7 @@ export interface AppConfig {
   LOG_PRETTY: boolean;
 }
 
-export type LoadConfigResult =
-  | { ok: true; config: AppConfig }
-  | { ok: false; issues: string[] };
+export type LoadConfigResult = { ok: true; config: AppConfig } | { ok: false; issues: string[] };
 
 /**
  * Read one value, recording any problem instead of throwing.
@@ -97,21 +86,15 @@ function collect<T>(issues: IssueCollector, read: () => T): T | undefined {
  * server can load it at startup, but accepts an explicit source so tests can
  * build a known configuration without mutating global state.
  */
-export function loadConfig(
-  source: NodeJS.ProcessEnv = process.env,
-): LoadConfigResult {
+export function loadConfig(source: NodeJS.ProcessEnv = process.env): LoadConfigResult {
   const issues = new IssueCollector();
 
-  const NODE_ENV = collect(issues, () =>
-    readEnum(source, 'NODE_ENV', NODE_ENVS, 'development'),
-  );
+  const NODE_ENV = collect(issues, () => readEnum(source, 'NODE_ENV', NODE_ENVS, 'development'));
   const PORT = collect(issues, () =>
     readInt(source, 'PORT', { min: 1, max: 65_535, default: 4000 }),
   );
 
-  const DATABASE_URL = collect(issues, () =>
-    readString(source, 'DATABASE_URL', { minLength: 1 }),
-  );
+  const DATABASE_URL = collect(issues, () => readString(source, 'DATABASE_URL', { minLength: 1 }));
   const DATABASE_ADMIN_URL = collect(issues, () =>
     readOptionalString(source, 'DATABASE_ADMIN_URL'),
   );
@@ -126,9 +109,7 @@ export function loadConfig(
   );
   const DB_SSL = collect(issues, () => readBoolean(source, 'DB_SSL', false));
 
-  const JWT_SECRET = collect(issues, () =>
-    readString(source, 'JWT_SECRET', { minLength: 32 }),
-  );
+  const JWT_SECRET = collect(issues, () => readString(source, 'JWT_SECRET', { minLength: 32 }));
   const JWT_EXPIRES_IN_MINUTES = collect(issues, () =>
     readInt(source, 'JWT_EXPIRES_IN_MINUTES', {
       min: 1,
@@ -144,9 +125,7 @@ export function loadConfig(
   const CORS_ORIGIN = collect(issues, () =>
     readList(source, 'CORS_ORIGIN', ['http://localhost:5173']),
   );
-  const TRUST_PROXY = collect(issues, () =>
-    readBoolean(source, 'TRUST_PROXY', false),
-  );
+  const TRUST_PROXY = collect(issues, () => readBoolean(source, 'TRUST_PROXY', false));
 
   const RATE_LIMIT_WINDOW_MINUTES = collect(issues, () =>
     readInt(source, 'RATE_LIMIT_WINDOW_MINUTES', { min: 1, default: 15 }),
@@ -158,15 +137,9 @@ export function loadConfig(
     readInt(source, 'LOGIN_RATE_LIMIT_MAX_ATTEMPTS', { min: 1, default: 10 }),
   );
 
-  const LOG_LEVEL = collect(issues, () =>
-    readEnum(source, 'LOG_LEVEL', LOG_LEVELS, 'info'),
-  );
-  const LOG_PRETTY = collect(issues, () =>
-    readBoolean(source, 'LOG_PRETTY', true),
-  );
-  const ADMIN_KEY = collect(issues, () =>
-    readOptionalString(source, 'ADMIN_KEY'),
-  );
+  const LOG_LEVEL = collect(issues, () => readEnum(source, 'LOG_LEVEL', LOG_LEVELS, 'info'));
+  const LOG_PRETTY = collect(issues, () => readBoolean(source, 'LOG_PRETTY', true));
+  const ADMIN_KEY = collect(issues, () => readOptionalString(source, 'ADMIN_KEY'));
 
   if (NODE_ENV === 'production') {
     if (JWT_SECRET === EXAMPLE_SECRET) {
@@ -184,11 +157,7 @@ export function loadConfig(
       );
     }
     if (DB_SSL === false) {
-      issues.add(
-        'DB_SSL',
-        'unsafe_in_production',
-        'DB_SSL must be true in production',
-      );
+      issues.add('DB_SSL', 'unsafe_in_production', 'DB_SSL must be true in production');
     }
   }
 
@@ -229,9 +198,7 @@ export function loadConfigOrThrow(source?: NodeJS.ProcessEnv): AppConfig {
 
   if (!result.ok) {
     throw new Error(
-      `Invalid configuration:\n${result.issues
-        .map((issue) => `  - ${issue}`)
-        .join('\n')}`,
+      `Invalid configuration:\n${result.issues.map((issue) => `  - ${issue}`).join('\n')}`,
     );
   }
 

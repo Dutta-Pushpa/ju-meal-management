@@ -637,8 +637,7 @@ describe('GET /api/locations/manage/all', () => {
       .set(authHeader(managerToken));
     expect(response.status).toBe(200);
     expect(response.body.meta.total).toBe(response.body.data.length);
-    expect(response.body.data.map((location: { name: string }) => location.name)).toContain(
-      inactiveName,
-    );
+    const managedLocations = response.body.data as Array<{ name: string }>;
+    expect(managedLocations.map((location) => location.name)).toContain(inactiveName);
   });
 });

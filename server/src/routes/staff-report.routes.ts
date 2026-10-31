@@ -1,6 +1,10 @@
 import { Router } from 'express';
 import type { Database } from '../db/pool.js';
-import { budgetReport, dailyReport, monthlyReport } from '../controllers/staff-report.controller.js';
+import {
+  budgetReport,
+  dailyReport,
+  monthlyReport,
+} from '../controllers/staff-report.controller.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 
 export function createStaffReportRouter(deps: { db: Database; jwtSecret: string }): Router {
