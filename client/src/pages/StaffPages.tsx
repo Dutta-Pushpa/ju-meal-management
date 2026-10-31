@@ -133,7 +133,8 @@ export function StaffOperations({ token, user }: { token: string; user: User }) 
   function startDelivery(order: StaffOrder) {
     setDeliveringId(order.id);
     setDeliverForm({
-      actualTaka: (order.total.amountPaisa / 100).toFixed(2),
+      // Default to the estimate the teacher was charged at placement.
+      actualTaka: (order.estimatedTotal.amountPaisa / 100).toFixed(2),
       alternativeName: order.alternativeItemName ?? '',
     });
   }
@@ -242,7 +243,7 @@ export function StaffOperations({ token, user }: { token: string; user: User }) 
                 <StatCard
                   label="In process"
                   value={String(daily.statusSummary.processing)}
-                  detail="Collected and under preparation"
+                  detail="Collected, awaiting delivery"
                   tone="blue"
                   symbol="▦"
                 />
@@ -382,6 +383,15 @@ export function StaffOperations({ token, user }: { token: string; user: User }) 
                           </span>
                         </div>
                       )}
+                      {order.actualCost &&
+                        order.actualCost.amountPaisa !== order.estimatedTotal.amountPaisa && (
+                          <div className="queue-items">
+                            <span className="table-subtitle">
+                              Estimated {order.estimatedTotal.amountFormatted} · Actual{' '}
+                              {order.actualCost.amountFormatted}
+                            </span>
+                          </div>
+                        )}
                       {deliveringId === order.id ? (
                         <div className="delivery-form">
                           <Field label="Actual delivered cost (৳)" hint="Deducted from the teacher's budget; differences from the estimate are settled automatically.">
@@ -717,9 +727,7 @@ export function StaffReports({ token, user }: { token: string; user: User }) {
                                     teacher.remaining.amountPaisa < 0 ? 'amount-negative' : ''
                                   }
                                 >
-                                  {teacher.remaining.amountPaisa < 0
-                                    ? `−${money(Math.abs(teacher.remaining.amountPaisa))}`
-                                    : teacher.remaining.amountFormatted}
+                                  {money(teacher.remaining.amountPaisa)}
                                 </strong>
                               </td>
                             </tr>

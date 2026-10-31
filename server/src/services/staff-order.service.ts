@@ -64,7 +64,8 @@ export async function getGroupedStaffOrders(db: Database, date: string) {
       groups.set(row.food_location_id, group);
     }
     group.teachers.add(row.teacher_id);
-    group.totalPaisa += row.total_paisa;
+    const effectivePaisa = row.actual_cost_paisa ?? row.total_paisa;
+    group.totalPaisa += effectivePaisa;
     const orderItems = (itemsByOrder.get(row.id) ?? []).map((item) => ({
       name: item.item_name_snapshot,
       quantity: item.quantity,
@@ -76,7 +77,7 @@ export async function getGroupedStaffOrders(db: Database, date: string) {
       id: row.id,
       teacherName: row.teacher_name,
       items: orderItems,
-      totalPaisa: row.total_paisa,
+      totalPaisa: effectivePaisa,
     });
   }
 
@@ -90,7 +91,7 @@ export async function getGroupedStaffOrders(db: Database, date: string) {
       itemSummary: [...group.itemCounts].map(([name, quantity]) => ({ name, quantity })),
       orders: group.orders,
     })),
-    dailyTotalPaisa: rows.reduce((sum, row) => sum + row.total_paisa, 0),
+    dailyTotalPaisa: rows.reduce((sum, row) => sum + (row.actual_cost_paisa ?? row.total_paisa), 0),
   };
 }
 
@@ -118,12 +119,12 @@ export async function changeOrderStatus(
       );
     }
 
-    // Debit the teacher's budget exactly once when the order is delivered.
-    // This is the source-of-truth financial event; placement-time debits are
-    // removed and delivery-time debit prevents duplicate charges.
+    // The teacher is debited the estimated total when the order is placed
+    // (see placeOrder). At delivery we only need a debit of our own for legacy
+    // orders that have none, so the teacher is never charged twice.
     if (input.status === 'DELIVERED') {
-      const existingDebit = await orders.findOrderBudgetPeriod(tx, order.id);
-      if (existingDebit === undefined) {
+      const alreadyDebited = await orders.hasOrderDebit(tx, order.id);
+      if (!alreadyDebited) {
         const periodId = await orders.findPeriodForDate(tx, order.order_date);
         const orderYear = parseInt(order.order_date.slice(0, 4), 10);
         const orderMonth = parseInt(order.order_date.slice(5, 7), 10);
@@ -141,10 +142,11 @@ export async function changeOrderStatus(
         });
       }
 
-      // Reconcile the billed amount with the actual cost of what was
-      // delivered (decision B: hold at placement, settle at delivery). The
-      // estimated total was already debited at placement; a costlier delivery
-      // debits the difference, a cheaper one refunds it.
+      // Reconcile the estimate with the actual cost of what was delivered
+      // (hold at placement, settle at delivery). The estimated total was
+      // debited at placement; a costlier delivery debits the difference, a
+      // cheaper one refunds it. `total_paisa` keeps the estimate; the actual
+      // cost is stored in `actual_cost_paisa`.
       const actualCost = input.actualCostPaisa ?? order.total_paisa;
       if (actualCost !== order.total_paisa) {
         const orderYear = parseInt(order.order_date.slice(0, 4), 10);

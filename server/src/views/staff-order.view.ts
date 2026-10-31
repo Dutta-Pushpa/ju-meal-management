@@ -12,7 +12,11 @@ export function presentStaffOrder(row: StaffOrderRow, items: OrderItemRow[]) {
     foodLocation: { id: row.food_location_id, name: row.location_name },
     orderDate: row.order_date,
     status: row.status,
-    total: money(row.total_paisa),
+    // `total` is the effective cost: the actual cost once delivered, otherwise
+    // the estimate the teacher was charged at placement.
+    total: money(row.actual_cost_paisa ?? row.total_paisa),
+    estimatedTotal: money(row.total_paisa),
+    actualCost: row.actual_cost_paisa === null ? null : money(row.actual_cost_paisa),
     alternativeItemName: row.alternative_item_name,
     alternativeUnitPrice: row.alternative_unit_price_paisa
       ? money(row.alternative_unit_price_paisa)

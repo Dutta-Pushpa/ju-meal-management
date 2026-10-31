@@ -100,7 +100,12 @@ export interface StaffOrder {
   foodLocation: { id: number; name: string };
   orderDate: string;
   status: OrderStatus;
+  /** Effective cost: the actual cost once delivered, otherwise the estimate. */
   total: Money;
+  /** What the teacher was charged at placement. */
+  estimatedTotal: Money;
+  /** Actual cost confirmed at delivery; null until delivered. */
+  actualCost: Money | null;
   /** The fallback dish the teacher declared when ordering, if any. */
   alternativeItemName: string | null;
   alternativeUnitPrice: Money | null;
@@ -181,9 +186,13 @@ export interface MonthlyBudgetRow {
   adjusted: Money;
   /** Budget carried into the month from all previous months (may be negative). */
   carryForward: Money;
+  /** Gross debits recorded in the month. */
   spent: Money;
+  /** Refunds recorded in the month (cancellations, cheaper deliveries). */
   refunded: Money;
-  /** allocated + adjusted + carry - spent. Negative when the teacher overdrew. */
+  /** spent - refunded: what the month actually cost. */
+  netSpent: Money;
+  /** allocated + adjusted + carry - netSpent. Negative when the teacher overdrew. */
   remaining: Money;
 }
 

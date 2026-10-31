@@ -22,7 +22,23 @@ export function setUnauthorizedHandler(handler: (() => void) | undefined): void 
   onUnauthorized = handler;
 }
 
-export async function api<T>(path: string, options: RequestOptions = {}): Promise<T> {
+/** Pagination details the API returns next to list data. */
+export interface PageMeta {
+  total: number;
+  page?: number;
+  pageSize?: number;
+  perPage?: number;
+  /** Sum of every matching record, where the endpoint provides one. */
+  totalAmount?: { amountPaisa: number; amountFormatted: string };
+}
+
+interface ApiPayload<T> {
+  data?: T;
+  meta?: PageMeta;
+  error?: { message?: string; code?: string; details?: ApiError['details'] };
+}
+
+async function request<T>(path: string, options: RequestOptions): Promise<ApiPayload<T>> {
   const { token, body, headers, ...rest } = options;
   const requestHeaders = new Headers(headers);
   requestHeaders.set('Accept', 'application/json');
@@ -44,10 +60,7 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
     );
   }
 
-  const payload = (await response.json().catch(() => ({}))) as {
-    data?: T;
-    error?: { message?: string; code?: string; details?: ApiError['details'] };
-  };
+  const payload = (await response.json().catch(() => ({}))) as ApiPayload<T>;
   if (!response.ok) {
     if (response.status === 401) onUnauthorized?.();
     throw new ApiError(
@@ -57,7 +70,21 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
       payload.error?.details,
     );
   }
+  return payload;
+}
+
+export async function api<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const payload = await request<T>(path, options);
   return payload.data as T;
+}
+
+/** Like `api`, but also returns the pagination `meta` (totals, page, sum). */
+export async function apiPage<T>(
+  path: string,
+  options: RequestOptions = {},
+): Promise<{ data: T; meta: PageMeta }> {
+  const payload = await request<T>(path, options);
+  return { data: payload.data as T, meta: payload.meta ?? { total: 0 } };
 }
 
 export function asMessage(error: unknown): string {
@@ -77,7 +104,12 @@ export function todayInDhaka(): string {
 }
 
 export function money(amountPaisa: number): string {
-  return `৳${(amountPaisa / 100).toLocaleString('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const sign = amountPaisa < 0 ? '−' : '';
+  const taka = (Math.abs(amountPaisa) / 100).toLocaleString('en-BD', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  return `${sign}৳${taka}`;
 }
 
 /** Current Dhaka business month as 'YYYY-MM' (used by month inputs). */

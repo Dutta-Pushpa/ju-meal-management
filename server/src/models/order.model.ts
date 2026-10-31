@@ -356,7 +356,8 @@ export async function insertConfirmedEvent(
 export async function findOrder(db: Queryable, orderId: number): Promise<CreatedOrder | undefined> {
   const { rows } = await db.query<CreatedOrder>(
     `SELECT o.id, to_char(o.order_date, 'YYYY-MM-DD') AS order_date,
-            o.food_location_id, l.name AS location_name, o.status, o.total_paisa, o.confirmed_at
+            o.food_location_id, l.name AS location_name, o.status,
+            COALESCE(o.actual_cost_paisa, o.total_paisa) AS total_paisa, o.confirmed_at
        FROM orders o JOIN food_locations l ON l.id = o.food_location_id WHERE o.id = $1`,
     [orderId],
   );
@@ -380,7 +381,8 @@ export async function findTeacherOrder(
 ): Promise<OrderReadRow | undefined> {
   const { rows } = await db.query<OrderReadRow>(
     `SELECT o.id, o.teacher_id, to_char(o.order_date, 'YYYY-MM-DD') AS order_date,
-            o.food_location_id, l.name AS location_name, o.status, o.total_paisa, o.confirmed_at
+            o.food_location_id, l.name AS location_name, o.status,
+            COALESCE(o.actual_cost_paisa, o.total_paisa) AS total_paisa, o.confirmed_at
        FROM orders o JOIN food_locations l ON l.id = o.food_location_id
       WHERE o.id = $1 AND o.teacher_id = $2`,
     [orderId, teacherId],
@@ -420,7 +422,8 @@ export async function listTeacherOrders(
 ): Promise<OrderReadRow[]> {
   const { rows } = await db.query<OrderReadRow>(
     `SELECT o.id, o.teacher_id, to_char(o.order_date, 'YYYY-MM-DD') AS order_date,
-            o.food_location_id, l.name AS location_name, o.status, o.total_paisa, o.confirmed_at
+            o.food_location_id, l.name AS location_name, o.status,
+            COALESCE(o.actual_cost_paisa, o.total_paisa) AS total_paisa, o.confirmed_at
        FROM orders o JOIN food_locations l ON l.id = o.food_location_id
       WHERE o.teacher_id = $1
         AND ($2::date IS NULL OR o.order_date = $2::date)
@@ -467,16 +470,15 @@ export async function lockOrderForCancellation(
   return rows[0];
 }
 
-export async function findOrderBudgetPeriod(
-  db: Queryable,
-  orderId: number,
-): Promise<number | undefined> {
-  const { rows } = await db.query<{ budget_period_id: number }>(
-    `SELECT budget_period_id FROM budget_ledger
-       WHERE order_id = $1 AND entry_type = 'debit' LIMIT 1`,
+/** True when the order already has a placement debit in the ledger. */
+export async function hasOrderDebit(db: Queryable, orderId: number): Promise<boolean> {
+  const { rows } = await db.query<{ has_debit: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM budget_ledger WHERE order_id = $1 AND entry_type = 'debit'
+     ) AS has_debit`,
     [orderId],
   );
-  return rows[0]?.budget_period_id;
+  return rows[0]!.has_debit;
 }
 
 export interface OrderDebitRecord {
