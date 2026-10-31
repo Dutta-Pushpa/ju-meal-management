@@ -16,6 +16,7 @@ export interface LocationRow {
   is_active: boolean;
   created_at: Date;
   updated_at: Date;
+  available_menu_item_count?: number;
 }
 
 const LOCATION_COLUMNS = `
@@ -43,7 +44,13 @@ export interface UpdateLocationInput {
 /** Active locations for the browse view, alphabetically. */
 export async function listActiveLocations(db: Queryable): Promise<LocationRow[]> {
   const { rows } = await db.query<LocationRow>(
-    `SELECT ${LOCATION_COLUMNS} FROM food_locations WHERE is_active ORDER BY name`,
+    `SELECT l.id, l.name, l.name_bn, l.description, l.is_active, l.created_at, l.updated_at,
+            count(m.id) FILTER (WHERE m.is_active AND m.is_available)::int AS available_menu_item_count
+       FROM food_locations l
+       LEFT JOIN menu_items m ON m.food_location_id = l.id
+      WHERE l.is_active
+      GROUP BY l.id
+      ORDER BY l.name`,
   );
 
   return rows;

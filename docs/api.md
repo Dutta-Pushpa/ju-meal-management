@@ -224,7 +224,12 @@ must supply `teacherId` to view a teacher's budget.
   "data": {
     "year": 2026,
     "month": 10,
-    "period": { "id": "2026-10", "name": "October 2026", "startsOn": "2026-10-01", "endsOn": "2026-10-31" },
+    "period": {
+      "id": "2026-10",
+      "name": "October 2026",
+      "startsOn": "2026-10-01",
+      "endsOn": "2026-10-31"
+    },
     "hasAllocation": true,
     "allocated": { "amountPaisa": 70000, "amountFormatted": "৳700.00" },
     "adjusted": { "amountPaisa": 3000, "amountFormatted": "৳30.00" },
@@ -585,7 +590,11 @@ cancelled ones) and the spending on delivered orders:
       "spendingOnDelivered": { "amountPaisa": 95000, "amountFormatted": "৳950.00" }
     },
     "locations": [
-      { "location": { "id": 1, "name": "Cafeteria" }, "orderCount": 10, "total": { "amountPaisa": 180000, "amountFormatted": "৳1800.00" } }
+      {
+        "location": { "id": 1, "name": "Cafeteria" },
+        "orderCount": 10,
+        "total": { "amountPaisa": 180000, "amountFormatted": "৳1800.00" }
+      }
     ],
     "dailyTotal": { "amountPaisa": 180000, "amountFormatted": "৳1800.00" }
   }
@@ -687,7 +696,11 @@ plus per-month totals and a grand total.
       "label": "October 2026",
       "totalAllocated": { "amountPaisa": 1680000, "amountFormatted": "৳16800.00" },
       "teachers": [
-        { "teacherId": 42, "fullName": "Dr. Ahsan Karim", "allocated": { "amountPaisa": 280000, "amountFormatted": "৳2800.00" } }
+        {
+          "teacherId": 42,
+          "fullName": "Dr. Ahsan Karim",
+          "allocated": { "amountPaisa": 280000, "amountFormatted": "৳2800.00" }
+        }
       ]
     }
   ],
@@ -708,7 +721,13 @@ backward compatibility; the monthly planning UI does not use it.
 **Auth:** `ADMIN`, or `STAFF` with `budgets:allocate`.
 
 ```json
-{ "teacherId": 42, "year": 2026, "month": 10, "amountPaisa": 280000, "reason": "monthly allocation" }
+{
+  "teacherId": 42,
+  "year": 2026,
+  "month": 10,
+  "amountPaisa": 280000,
+  "reason": "monthly allocation"
+}
 ```
 
 Creates the monthly allocation and its matching positive ledger entry in one

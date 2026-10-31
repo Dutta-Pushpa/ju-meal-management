@@ -63,13 +63,13 @@ const PHASES = [
 const config = {
   baseUrl: process.env['API_BASE_URL'] ?? 'http://localhost:4000',
 
-  adminEmail: process.env['ADMIN_EMAIL'] ?? 'admin@example.edu',
+  adminEmail: process.env['ADMIN_EMAIL'] ?? 'admin@juniv.edu',
   adminPassword: process.env['ADMIN_PASSWORD'] ?? 'AdminPass123!',
 
-  staffEmail: process.env['STAFF_EMAIL'] ?? 'staff@example.edu',
+  staffEmail: process.env['STAFF_EMAIL'] ?? 'staff@juniv.edu',
   staffPassword: process.env['STAFF_PASSWORD'] ?? 'StaffPass123!',
 
-  teacherEmail: process.env['TEACHER_EMAIL'] ?? 'teacher@example.edu',
+  teacherEmail: process.env['TEACHER_EMAIL'] ?? 'teacher@juniv.edu',
   teacherPassword: process.env['TEACHER_PASSWORD'] ?? 'TeacherPass123!',
 };
 

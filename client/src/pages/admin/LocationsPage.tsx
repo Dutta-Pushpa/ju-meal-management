@@ -74,9 +74,7 @@ export function AdminLocations({ token }: { token: string }) {
       (allowed) => allowed.toLowerCase() === name.toLowerCase(),
     );
     if (!matchesAllowed) {
-      setError(
-        `Allowed location names are: ${ALLOWED_LOCATIONS.join(', ')}. Please select one.`,
-      );
+      setError(`Allowed location names are: ${ALLOWED_LOCATIONS.join(', ')}. Please select one.`);
       setBusy(false);
       return;
     }
@@ -216,4 +214,3 @@ export function AdminLocations({ token }: { token: string }) {
     </>
   );
 }
-

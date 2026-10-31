@@ -95,7 +95,7 @@ describe('/api/staff/settings', () => {
         await request(app)
           .patch('/api/staff/settings/order_placement_deadline')
           .set(auth(teacherToken))
-          .send({ value: "10:30" })
+          .send({ value: '10:30' })
       ).status,
     ).toBe(403);
   });
@@ -106,7 +106,7 @@ describe('/api/staff/settings', () => {
     const settings = list.body.data as Array<{ key: string; value: string }>;
     const cutoffTime = settings.find((entry) => entry.key === 'order_placement_deadline');
     expect(cutoffTime).toBeDefined();
-    expect(cutoffTime!.value).toBe("12:30");
+    expect(cutoffTime!.value).toBe('12:30');
 
     // Settings are administrative controls: only ADMIN may change policy.
     const updated = await request(app)
@@ -121,7 +121,7 @@ describe('/api/staff/settings', () => {
           `SELECT value #>> '{}' AS value FROM app_settings WHERE key = 'order_placement_deadline'`,
         )
       )[0]!.value,
-    ).toBe("10:30");
+    ).toBe('10:30');
     expect(
       await query(
         `SELECT id FROM audit_logs WHERE action = 'setting.updated' AND metadata->>'key' = 'order_placement_deadline'`,
@@ -144,7 +144,7 @@ describe('/api/staff/settings', () => {
         await request(app)
           .patch('/api/staff/settings/order_placement_deadline')
           .set(auth(adminToken))
-          .send({ value: "25:61" })
+          .send({ value: '25:61' })
       ).status,
     ).toBe(400);
     expect(

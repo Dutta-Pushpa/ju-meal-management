@@ -274,7 +274,9 @@ export function TeacherMeals({
       .then((data) => {
         if (cancelled) return;
         setLocations(data);
-        if (data[0]) setLocationId(String(data[0].id));
+        const firstWithMenu = data.find((location) => (location.availableMenuItemCount ?? 0) > 0);
+        const defaultLocation = firstWithMenu ?? data[0];
+        if (defaultLocation) setLocationId(String(defaultLocation.id));
       })
       .catch((e) => {
         if (!cancelled) setError(asMessage(e));
@@ -543,7 +545,7 @@ export function TeacherMeals({
             {items.length === 0 ? (
               <Empty
                 title="No available menu items"
-                detail="This location has not published any available items."
+                detail={`${locations.find((location) => String(location.id) === locationId)?.name ?? 'This location'} has not published any available items. Choose another location or ask staff to publish its menu.`}
               />
             ) : visibleItems.length === 0 ? (
               <Empty title="No matching dishes" detail="Try another search term." />

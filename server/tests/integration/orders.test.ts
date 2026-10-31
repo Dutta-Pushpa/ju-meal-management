@@ -190,9 +190,8 @@ describe('POST /api/orders', () => {
       .get('/api/staff/budgets/monthly?year=2092&month=1')
       .set(auth(staffToken));
     expect(budgetReport.status).toBe(200);
-    const teacherRow = budgetReport.body.data.find(
-      (row: { teacher: { id: number } }) => row.teacher.id === teacherId,
-    );
+    const budgetRows = budgetReport.body.data as Array<{ teacher: { id: number } }>;
+    const teacherRow = budgetRows.find((row) => row.teacher.id === teacherId);
     expect(teacherRow).toMatchObject({
       allocated: { amountPaisa: 1500 },
       spent: { amountPaisa: 1000 },
@@ -297,6 +296,15 @@ describe('POST /api/orders', () => {
     expect(teacherCancel.status).toBe(200);
     expect(teacherCancel.body.data.status).toBe('CANCELLED');
     expect(await query("SELECT id FROM budget_ledger WHERE entry_type = 'refund'")).toHaveLength(1);
+    const cancelledHistory = await request(app)
+      .get('/api/orders/mine?page=1&pageSize=5')
+      .set(auth(teacherToken));
+    expect(cancelledHistory.status).toBe(200);
+    expect(cancelledHistory.body.data[0]).toMatchObject({
+      status: 'CANCELLED',
+      cancelledBy: 'teacher',
+      cancelReason: 'changed my mind',
+    });
     const repeatedCancel = await request(app)
       .post(`/api/orders/${created.body.data.id}/cancel`)
       .set(auth(teacherToken))
@@ -443,10 +451,13 @@ describe('POST /api/orders', () => {
     ]);
 
     const orderRow = (
-      await query<{ total_paisa: number; actual_cost_paisa: number; alternative_item_name: string }>(
-        `SELECT total_paisa, actual_cost_paisa, alternative_item_name FROM orders WHERE id = $1`,
-        [created.body.data.id],
-      )
+      await query<{
+        total_paisa: number;
+        actual_cost_paisa: number;
+        alternative_item_name: string;
+      }>(`SELECT total_paisa, actual_cost_paisa, alternative_item_name FROM orders WHERE id = $1`, [
+        created.body.data.id,
+      ])
     )[0]!;
     expect(Number(orderRow.total_paisa)).toBe(700);
     expect(Number(orderRow.actual_cost_paisa)).toBe(700);
@@ -515,10 +526,9 @@ describe('POST /api/orders', () => {
     );
     expect(costlierEntries.map((entry) => Number(entry.amount_paisa))).toEqual([-1200, -800]);
     const thirdRow = (
-      await query<{ total_paisa: number }>(
-        `SELECT total_paisa FROM orders WHERE id = $1`,
-        [third.body.data.id],
-      )
+      await query<{ total_paisa: number }>(`SELECT total_paisa FROM orders WHERE id = $1`, [
+        third.body.data.id,
+      ])
     )[0]!;
     expect(Number(thirdRow.total_paisa)).toBe(2000);
   });

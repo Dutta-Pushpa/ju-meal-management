@@ -56,7 +56,13 @@ async function seedUser(
   const rows = await query<{ id: number }>(
     `INSERT INTO users (full_name, email, password_hash, role, permissions)
      VALUES ($1, $2, $3, $4, $5::jsonb) RETURNING id`,
-    [email.split('@')[0], email, await hashPassword(PASSWORD, 10), role, JSON.stringify(permissions)],
+    [
+      email.split('@')[0],
+      email,
+      await hashPassword(PASSWORD, 10),
+      role,
+      JSON.stringify(permissions),
+    ],
   );
   return rows[0]!.id;
 }
@@ -112,7 +118,11 @@ describe('budget requests', () => {
     const response = await request(app)
       .post('/api/teacher/budget-requests')
       .set(auth(teacherToken))
-      .send({ requestType: 'budget_increase', amountPaisa: 25000, reason: 'Guest students next week' });
+      .send({
+        requestType: 'budget_increase',
+        amountPaisa: 25000,
+        reason: 'Guest students next week',
+      });
     expect(response.status).toBe(201);
     expect(response.body.data).toMatchObject({
       requestType: 'budget_increase',
@@ -129,9 +139,7 @@ describe('budget requests', () => {
       .set(auth(teacher2Token))
       .send({ requestType: 'debt_allowance', amountPaisa: 10000, reason: 'Conference week' });
 
-    const mine = await request(app)
-      .get('/api/teacher/budget-requests')
-      .set(auth(teacherToken));
+    const mine = await request(app).get('/api/teacher/budget-requests').set(auth(teacherToken));
     expect(mine.status).toBe(200);
     expect(mine.body.data).toHaveLength(1);
     expect(mine.body.data[0].teacher.id).toBe(teacherId);
@@ -153,8 +161,9 @@ describe('budget requests', () => {
       .get('/api/staff/budget-requests?status=pending')
       .set(auth(adminToken));
     expect(inbox.status).toBe(200);
-    expect(inbox.body.data).toHaveLength(2);
-    expect(inbox.body.data.every((r: { status: string }) => r.status === 'pending')).toBe(true);
+    const requests = inbox.body.data as Array<{ status: string }>;
+    expect(requests).toHaveLength(2);
+    expect(requests.every((r) => r.status === 'pending')).toBe(true);
   });
 
   it('rejecting records the decision without touching the ledger', async () => {

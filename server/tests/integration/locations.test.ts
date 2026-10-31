@@ -188,8 +188,13 @@ describe('GET /api/locations', () => {
   it('returns active locations only, with a total', async () => {
     const active = uniqueName('Visible');
     const hidden = uniqueName('Hidden');
-    await seedLocation({ name: active });
+    const activeId = await seedLocation({ name: active });
     await seedLocation({ name: hidden, isActive: false });
+    await query(
+      `INSERT INTO menu_items (food_location_id, name, price_paisa, is_available)
+       VALUES ($1, 'Available test item', 1000, true), ($1, 'Sold out test item', 1000, false)`,
+      [activeId],
+    );
 
     const res = await request(app).get('/api/locations').set(authHeader(teacherToken));
 
@@ -202,6 +207,11 @@ describe('GET /api/locations', () => {
     expect((res.body.data as Array<{ isActive: boolean }>).every((l) => l.isActive === true)).toBe(
       true,
     );
+    expect(
+      (res.body.data as Array<{ id: number; availableMenuItemCount: number }>).find(
+        (location) => location.id === activeId,
+      )?.availableMenuItemCount,
+    ).toBe(1);
   });
 
   it('is open to a teacher, not only to staff', async () => {
@@ -627,8 +637,7 @@ describe('GET /api/locations/manage/all', () => {
       .set(authHeader(managerToken));
     expect(response.status).toBe(200);
     expect(response.body.meta.total).toBe(response.body.data.length);
-    expect(response.body.data.map((location: { name: string }) => location.name)).toContain(
-      inactiveName,
-    );
+    const managedLocations = response.body.data as Array<{ name: string }>;
+    expect(managedLocations.map((location) => location.name)).toContain(inactiveName);
   });
 });
