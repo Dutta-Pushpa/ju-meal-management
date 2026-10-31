@@ -15,7 +15,7 @@ import {
 import {
   presentAllocation,
   presentBudgetEntry,
-  presentMonthTransactions,
+  presentMonthTransactionsPage,
   presentMonthlyBudgetRows,
   presentBudgetHistory,
 } from '../views/budget-admin.view.js';
@@ -134,10 +134,14 @@ export function getTransactions(db: Database) {
       page,
       perPage,
     });
-    res.status(200).json({
-      ...presentMonthTransactions(result.rows),
-      meta: { total: result.total, page, perPage },
-    });
+    res.status(200).json(
+      presentMonthTransactionsPage(result.rows, {
+        total: result.total,
+        page,
+        perPage,
+        totalPaisa: result.totalPaisa,
+      }),
+    );
   };
 }
 

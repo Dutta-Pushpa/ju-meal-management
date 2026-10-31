@@ -453,8 +453,8 @@ FROM (VALUES
 JOIN orders o ON o.id = x.order_id;
 
 -- Order 4 was delivered costlier than estimated. Reconciliation mirrors the
--- app: total_paisa moves to the actual cost and the difference is debited.
-UPDATE orders SET total_paisa = actual_cost_paisa WHERE id = 4;
+-- app: total_paisa keeps the placement estimate, actual_cost_paisa holds the
+-- real cost, and the difference is debited in the ledger.
 
 -- ---------------------------------------------------------------------------
 -- Status history for the hand-written orders.

@@ -21,7 +21,7 @@ export async function getDailyTotals(db: Queryable, date: string): Promise<Daily
   const { rows } = await db.query<DailyLocationTotal>(
     `SELECT l.id AS location_id, l.name AS location_name,
             count(o.id)::int AS order_count,
-            COALESCE(sum(o.total_paisa), 0)::bigint AS total_paisa,
+            COALESCE(sum(COALESCE(o.actual_cost_paisa, o.total_paisa)), 0)::bigint AS total_paisa,
             grouping(l.id)::int AS is_total
        FROM orders o
        JOIN food_locations l ON l.id = o.food_location_id
@@ -39,13 +39,14 @@ export interface DailyStatusCount {
   total_paisa: number;
 }
 
-/** Per-status order counts for one business date, plus the delivered spend. */
+/** Per-status order counts for one business date. The amount is the effective
+ * cost: the actual cost once delivered, otherwise the placement estimate. */
 export async function getDailyStatusCounts(
   db: Queryable,
   date: string,
 ): Promise<DailyStatusCount[]> {
   const { rows } = await db.query<DailyStatusCount>(
-    `SELECT status, count(*)::int AS count, COALESCE(sum(total_paisa), 0)::bigint AS total_paisa
+    `SELECT status, count(*)::int AS count, COALESCE(sum(COALESCE(actual_cost_paisa, total_paisa)), 0)::bigint AS total_paisa
        FROM orders
       WHERE order_date = $1::date
       GROUP BY status`,
@@ -100,11 +101,11 @@ export async function getMonthlyOrderStats(
     `SELECT to_char(o.order_date, 'YYYY-MM') AS ym,
             o.teacher_id, u.full_name AS teacher_name,
             count(*)::int AS total_orders,
-            count(*) FILTER (WHERE o.status = 'PENDING')::int AS pending_orders,
-            count(*) FILTER (WHERE o.status IN ('ACCEPTED', 'CONFIRMED', 'COLLECTED'))::int AS processing_orders,
+            count(*) FILTER (WHERE o.status IN ('PENDING', 'ACCEPTED', 'CONFIRMED'))::int AS pending_orders,
+            count(*) FILTER (WHERE o.status = 'COLLECTED')::int AS processing_orders,
             count(*) FILTER (WHERE o.status = 'DELIVERED')::int AS delivered_orders,
             count(*) FILTER (WHERE o.status = 'CANCELLED')::int AS cancelled_orders,
-            COALESCE(sum(o.total_paisa) FILTER (WHERE o.status = 'DELIVERED'), 0)::bigint AS delivered_spent_paisa
+            COALESCE(sum(COALESCE(o.actual_cost_paisa, o.total_paisa)) FILTER (WHERE o.status = 'DELIVERED'), 0)::bigint AS delivered_spent_paisa
        FROM orders o
        JOIN users u ON u.id = o.teacher_id
       WHERE o.order_date >= make_date($1, $2, 1) - INTERVAL '5 months'

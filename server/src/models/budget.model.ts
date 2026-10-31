@@ -322,15 +322,23 @@ export interface MonthTransactionRow {
   status: string;
 }
 
-/** Successful (non-cancelled) orders placed within the budget month. */
-export async function countMonthTransactions(
+export interface MonthTransactionTotals {
+  count: number;
+  /** Sum of the effective cost of every matching order, not just one page. */
+  totalPaisa: number;
+}
+
+/** Successful (non-cancelled) orders placed within the budget month. The
+ * amount is the effective cost: actual once delivered, else the estimate. */
+export async function totalMonthTransactions(
   db: Queryable,
   year: number,
   month: number,
   teacherId: number | undefined,
-): Promise<number> {
-  const { rows } = await db.query<{ total: number }>(
-    `SELECT count(*)::int AS total
+): Promise<MonthTransactionTotals> {
+  const { rows } = await db.query<{ count: number; total_paisa: string }>(
+    `SELECT count(*)::int AS count,
+            COALESCE(sum(COALESCE(o.actual_cost_paisa, o.total_paisa)), 0)::bigint AS total_paisa
        FROM orders o
       WHERE o.status <> 'CANCELLED'
         AND o.order_date >= make_date($2, $3, 1)
@@ -338,7 +346,7 @@ export async function countMonthTransactions(
         AND ($1::bigint IS NULL OR o.teacher_id = $1)`,
     [teacherId ?? null, year, month],
   );
-  return rows[0]!.total;
+  return { count: rows[0]!.count, totalPaisa: Number(rows[0]!.total_paisa) };
 }
 
 export async function listMonthTransactions(
@@ -352,7 +360,7 @@ export async function listMonthTransactions(
   const { rows } = await db.query<MonthTransactionRow>(
     `SELECT o.id, o.teacher_id, u.full_name AS teacher_name,
             to_char(o.order_date, 'YYYY-MM-DD') AS order_date,
-            o.total_paisa, o.status
+            COALESCE(o.actual_cost_paisa, o.total_paisa) AS total_paisa, o.status
        FROM orders o
        JOIN users u ON u.id = o.teacher_id
       WHERE o.status <> 'CANCELLED'
