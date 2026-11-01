@@ -6,6 +6,14 @@ export interface StaffOrderFilters {
   locationId?: number | undefined;
   status?: 'CONFIRMED' | 'COLLECTED' | 'DELIVERED' | 'CANCELLED' | undefined;
   teacherId?: number | undefined;
+  /** Case-insensitive match on the teacher's name. */
+  search?: string | undefined;
+}
+
+/** Escapes LIKE wildcards so a search for "50%" matches literally. */
+function likePattern(search: string | undefined): string | null {
+  if (!search) return null;
+  return search.replace(/[\\%_]/g, '\\$&');
 }
 
 export interface StaffOrderRow {
@@ -16,7 +24,10 @@ export interface StaffOrderRow {
   location_name: string;
   order_date: string;
   status: 'CONFIRMED' | 'COLLECTED' | 'DELIVERED' | 'CANCELLED';
+  /** Estimate charged at placement. */
   total_paisa: number;
+  /** Actual cost confirmed at delivery; null until delivered. */
+  actual_cost_paisa: number | null;
   alternative_item_name: string | null;
   alternative_unit_price_paisa: number | null;
   confirmed_at: Date;
@@ -47,7 +58,9 @@ export async function setOrderStatus(
 
 /** Records the delivery outcome: the actual cost of what was really delivered
  * (and the alternative item, when one was supplied) plus who confirmed it.
- * The order's billed total is updated to the actual cost. */
+ * `total_paisa` keeps the estimate the teacher was charged at placement; the
+ * actual cost lives in `actual_cost_paisa`. Reports and views use
+ * COALESCE(actual_cost_paisa, total_paisa) as the effective cost. */
 export async function setOrderDelivered(
   db: Queryable,
   orderId: number,
@@ -59,8 +72,7 @@ export async function setOrderDelivered(
 ): Promise<void> {
   await db.query(
     `UPDATE orders
-        SET total_paisa = $2,
-            actual_cost_paisa = $2,
+        SET actual_cost_paisa = $2,
             alternative_item_name = COALESCE($3, alternative_item_name),
             delivery_confirmed_at = now(),
             delivery_confirmed_by = $4
@@ -122,12 +134,20 @@ export async function countStaffOrders(db: Queryable, filters: StaffOrderFilters
   const { rows } = await db.query<{ total: number }>(
     `SELECT count(*)::int AS total
        FROM orders o
+       JOIN users u ON u.id = o.teacher_id
       WHERE o.order_date = $1::date
         AND ($2::bigint IS NULL OR o.food_location_id = $2)
         AND ($3::text IS NOT NULL OR o.status <> 'CANCELLED')
         AND ($3::text IS NULL OR o.status = $3)
-        AND ($4::bigint IS NULL OR o.teacher_id = $4)`,
-    [filters.date, filters.locationId ?? null, filters.status ?? null, filters.teacherId ?? null],
+        AND ($4::bigint IS NULL OR o.teacher_id = $4)
+        AND ($5::text IS NULL OR u.full_name ILIKE ('%' || $5 || '%') ESCAPE '\\')`,
+    [
+      filters.date,
+      filters.locationId ?? null,
+      filters.status ?? null,
+      filters.teacherId ?? null,
+      likePattern(filters.search),
+    ],
   );
   return rows[0]!.total;
 }
@@ -142,7 +162,7 @@ export async function listStaffOrders(
     `SELECT o.id, o.teacher_id, u.full_name AS teacher_name,
             o.food_location_id, l.name AS location_name,
             to_char(o.order_date, 'YYYY-MM-DD') AS order_date,
-            o.status, o.total_paisa, o.confirmed_at,
+            o.status, o.total_paisa, o.actual_cost_paisa, o.confirmed_at,
             o.alternative_item_name, o.alternative_unit_price_paisa
        FROM orders o
        JOIN users u ON u.id = o.teacher_id
@@ -152,6 +172,7 @@ export async function listStaffOrders(
         AND ($3::text IS NOT NULL OR o.status <> 'CANCELLED')
         AND ($3::text IS NULL OR o.status = $3)
         AND ($4::bigint IS NULL OR o.teacher_id = $4)
+        AND ($7::text IS NULL OR u.full_name ILIKE ('%' || $7 || '%') ESCAPE '\\')
       ORDER BY l.name, u.full_name, o.created_at, o.id
       LIMIT $5 OFFSET $6`,
     [
@@ -161,6 +182,7 @@ export async function listStaffOrders(
       filters.teacherId ?? null,
       pageSize,
       offset,
+      likePattern(filters.search),
     ],
   );
   return rows;
@@ -169,21 +191,38 @@ export async function listStaffOrders(
 export async function listAllStaffOrdersForDate(
   db: Queryable,
   date: string,
+  locationId?: number,
 ): Promise<StaffOrderRow[]> {
   const { rows } = await db.query<StaffOrderRow>(
     `SELECT o.id, o.teacher_id, u.full_name AS teacher_name,
             o.food_location_id, l.name AS location_name,
             to_char(o.order_date, 'YYYY-MM-DD') AS order_date,
-            o.status, o.total_paisa, o.confirmed_at,
+            o.status, o.total_paisa, o.actual_cost_paisa, o.confirmed_at,
             o.alternative_item_name, o.alternative_unit_price_paisa
        FROM orders o
        JOIN users u ON u.id = o.teacher_id
        JOIN food_locations l ON l.id = o.food_location_id
       WHERE o.order_date = $1::date AND o.status <> 'CANCELLED'
+        AND ($2::bigint IS NULL OR o.food_location_id = $2)
       ORDER BY l.name, u.full_name, o.created_at, o.id`,
-    [date],
+    [date, locationId ?? null],
   );
   return rows;
+}
+
+/** Ids of the orders of one date and location that are still waiting to be collected. */
+export async function listConfirmedOrderIds(
+  db: Queryable,
+  date: string,
+  locationId: number,
+): Promise<number[]> {
+  const { rows } = await db.query<{ id: number }>(
+    `SELECT id FROM orders
+      WHERE order_date = $1::date AND food_location_id = $2 AND status = 'CONFIRMED'
+      ORDER BY id`,
+    [date, locationId],
+  );
+  return rows.map((row) => row.id);
 }
 
 export async function findStaffOrderItems(

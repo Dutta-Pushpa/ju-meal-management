@@ -24,8 +24,8 @@ export async function getStaffOrders(
   return { orders: rows.map((row) => ({ row, items: byOrder.get(row.id) ?? [] })), total };
 }
 
-export async function getGroupedStaffOrders(db: Database, date: string) {
-  const rows = await staffOrders.listAllStaffOrdersForDate(db, date);
+export async function getGroupedStaffOrders(db: Database, date: string, locationId?: number) {
+  const rows = await staffOrders.listAllStaffOrdersForDate(db, date, locationId);
   const items = await staffOrders.findStaffOrderItems(
     db,
     rows.map((row) => row.id),
@@ -44,7 +44,10 @@ export async function getGroupedStaffOrders(db: Database, date: string) {
       itemCounts: Map<string, number>;
       orders: Array<{
         id: number;
+        teacherId: number;
         teacherName: string;
+        status: staffOrders.StaffOrderRow['status'];
+        alternativeItemName: string | null;
         items: Array<{ name: string; quantity: number }>;
         totalPaisa: number;
       }>;
@@ -64,7 +67,8 @@ export async function getGroupedStaffOrders(db: Database, date: string) {
       groups.set(row.food_location_id, group);
     }
     group.teachers.add(row.teacher_id);
-    group.totalPaisa += row.total_paisa;
+    const effectivePaisa = row.actual_cost_paisa ?? row.total_paisa;
+    group.totalPaisa += effectivePaisa;
     const orderItems = (itemsByOrder.get(row.id) ?? []).map((item) => ({
       name: item.item_name_snapshot,
       quantity: item.quantity,
@@ -74,9 +78,12 @@ export async function getGroupedStaffOrders(db: Database, date: string) {
     }
     group.orders.push({
       id: row.id,
+      teacherId: row.teacher_id,
       teacherName: row.teacher_name,
+      status: row.status,
+      alternativeItemName: row.alternative_item_name,
       items: orderItems,
-      totalPaisa: row.total_paisa,
+      totalPaisa: effectivePaisa,
     });
   }
 
@@ -90,7 +97,7 @@ export async function getGroupedStaffOrders(db: Database, date: string) {
       itemSummary: [...group.itemCounts].map(([name, quantity]) => ({ name, quantity })),
       orders: group.orders,
     })),
-    dailyTotalPaisa: rows.reduce((sum, row) => sum + row.total_paisa, 0),
+    dailyTotalPaisa: rows.reduce((sum, row) => sum + (row.actual_cost_paisa ?? row.total_paisa), 0),
   };
 }
 
@@ -118,12 +125,12 @@ export async function changeOrderStatus(
       );
     }
 
-    // Debit the teacher's budget exactly once when the order is delivered.
-    // This is the source-of-truth financial event; placement-time debits are
-    // removed and delivery-time debit prevents duplicate charges.
+    // The teacher is debited the estimated total when the order is placed
+    // (see placeOrder). At delivery we only need a debit of our own for legacy
+    // orders that have none, so the teacher is never charged twice.
     if (input.status === 'DELIVERED') {
-      const existingDebit = await orders.findOrderBudgetPeriod(tx, order.id);
-      if (existingDebit === undefined) {
+      const alreadyDebited = await orders.hasOrderDebit(tx, order.id);
+      if (!alreadyDebited) {
         const periodId = await orders.findPeriodForDate(tx, order.order_date);
         const orderYear = parseInt(order.order_date.slice(0, 4), 10);
         const orderMonth = parseInt(order.order_date.slice(5, 7), 10);
@@ -141,10 +148,11 @@ export async function changeOrderStatus(
         });
       }
 
-      // Reconcile the billed amount with the actual cost of what was
-      // delivered (decision B: hold at placement, settle at delivery). The
-      // estimated total was already debited at placement; a costlier delivery
-      // debits the difference, a cheaper one refunds it.
+      // Reconcile the estimate with the actual cost of what was delivered
+      // (hold at placement, settle at delivery). The estimated total was
+      // debited at placement; a costlier delivery debits the difference, a
+      // cheaper one refunds it. `total_paisa` keeps the estimate; the actual
+      // cost is stored in `actual_cost_paisa`.
       const actualCost = input.actualCostPaisa ?? order.total_paisa;
       if (actualCost !== order.total_paisa) {
         const orderYear = parseInt(order.order_date.slice(0, 4), 10);
@@ -206,6 +214,35 @@ export async function changeOrderStatus(
     });
     return { oldStatus: order.status, status: input.status };
   });
+}
+
+/**
+ * Marks every CONFIRMED order of one date and location as collected. Each order
+ * is moved in its own transaction, so one failure never blocks the others; the
+ * ids that could not be updated (for example because someone else just changed
+ * them) are returned so the caller can report them.
+ */
+export async function bulkCollectOrders(
+  db: Database,
+  input: { date: string; locationId: number; actorId: number },
+) {
+  const ids = await staffOrders.listConfirmedOrderIds(db, input.date, input.locationId);
+  let collected = 0;
+  const failed: number[] = [];
+  for (const orderId of ids) {
+    try {
+      await changeOrderStatus(db, {
+        orderId,
+        status: 'COLLECTED',
+        actorId: input.actorId,
+        note: 'Collected by staff (bulk)',
+      });
+      collected += 1;
+    } catch {
+      failed.push(orderId);
+    }
+  }
+  return { collected, failed };
 }
 
 export async function changeOrderItemStatus(

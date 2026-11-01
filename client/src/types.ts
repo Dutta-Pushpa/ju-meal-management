@@ -100,7 +100,12 @@ export interface StaffOrder {
   foodLocation: { id: number; name: string };
   orderDate: string;
   status: OrderStatus;
+  /** Effective cost: the actual cost once delivered, otherwise the estimate. */
   total: Money;
+  /** What the teacher was charged at placement. */
+  estimatedTotal: Money;
+  /** Actual cost confirmed at delivery; null until delivered. */
+  actualCost: Money | null;
   /** The fallback dish the teacher declared when ordering, if any. */
   alternativeItemName: string | null;
   alternativeUnitPrice: Money | null;
@@ -117,12 +122,21 @@ export interface GroupedOrders {
     itemSummary: Array<{ name: string; quantity: number }>;
     orders: Array<{
       id: number;
+      teacherId: number;
       teacherName: string;
+      status: OrderStatus;
+      alternativeItemName: string | null;
       items: Array<{ name: string; quantity: number }>;
       total: Money;
     }>;
   }>;
   dailyTotal: Money;
+}
+/** Result of marking a location's confirmed orders as collected in one go. */
+export interface BulkCollectResult {
+  collected: number;
+  /** Ids that could not be updated, e.g. because someone else changed them first. */
+  failed: number[];
 }
 export interface DailyReport {
   date: string;
@@ -181,9 +195,13 @@ export interface MonthlyBudgetRow {
   adjusted: Money;
   /** Budget carried into the month from all previous months (may be negative). */
   carryForward: Money;
+  /** Gross debits recorded in the month. */
   spent: Money;
+  /** Refunds recorded in the month (cancellations, cheaper deliveries). */
   refunded: Money;
-  /** allocated + adjusted + carry - spent. Negative when the teacher overdrew. */
+  /** spent - refunded: what the month actually cost. */
+  netSpent: Money;
+  /** allocated + adjusted + carry - netSpent. Negative when the teacher overdrew. */
   remaining: Money;
 }
 

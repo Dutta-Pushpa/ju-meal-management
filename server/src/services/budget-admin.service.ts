@@ -185,7 +185,7 @@ export async function getMonthTransactions(
     perPage: number;
   },
 ) {
-  const total = await budget.countMonthTransactions(db, input.year, input.month, input.teacherId);
+  const totals = await budget.totalMonthTransactions(db, input.year, input.month, input.teacherId);
   const rows = await budget.listMonthTransactions(
     db,
     input.year,
@@ -194,7 +194,7 @@ export async function getMonthTransactions(
     input.perPage,
     (input.page - 1) * input.perPage,
   );
-  return { rows, total };
+  return { rows, total: totals.count, totalPaisa: totals.totalPaisa };
 }
 
 export interface BudgetHistory {

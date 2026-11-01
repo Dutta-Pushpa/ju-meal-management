@@ -12,6 +12,7 @@ import {
 } from '../utils/validation.js';
 import { cancelOrder as cancelOrderService } from '../services/order.service.js';
 import {
+  bulkCollectOrders,
   changeOrderItemStatus,
   changeOrderStatus,
   getGroupedStaffOrders,
@@ -30,6 +31,7 @@ export function listStaffOrders(db: Database) {
       locationId: readOptionalInt(req, 'locationId'),
       status: readOptionalStatus(req),
       teacherId: readOptionalInt(req, 'teacherId'),
+      search: readOptionalSearch(req),
     };
     const page = readIntQuery(req, 'page', 1, 1_000_000);
     const pageSize = readIntQuery(req, 'pageSize', 50, 100);
@@ -44,7 +46,7 @@ export function listStaffOrders(db: Database) {
 export function groupedStaffOrders(db: Database) {
   return async (req: Request, res: Response): Promise<void> => {
     const date = readBusinessDate(req.query['date'], 'date');
-    const result = await getGroupedStaffOrders(db, date);
+    const result = await getGroupedStaffOrders(db, date, readOptionalInt(req, 'locationId'));
     res.status(200).json({ data: presentGroupedOrders(result) });
   };
 }
@@ -103,6 +105,22 @@ export function patchStaffOrderStatus(deps: { db: Database; config: AppConfig })
   };
 }
 
+/** POST /staff/orders/bulk-collect — marks every confirmed order of a date and location collected. */
+export function bulkCollectStaffOrders(db: Database) {
+  return async (req: Request, res: Response): Promise<void> => {
+    const actor = currentUser(req);
+    requirePermission(actor.role, actor.permissions, 'orders:manage_status');
+    const body = requireObject(req.body ?? {}, 'body');
+    const date = readBusinessDate(body['date'], 'date');
+    const locationId = requireInt(body['locationId'], 'locationId', {
+      min: 1,
+      max: Number.MAX_SAFE_INTEGER,
+    });
+    const result = await bulkCollectOrders(db, { date, locationId, actorId: actor.id });
+    res.status(200).json({ data: result });
+  };
+}
+
 export function patchStaffOrderItemStatus(db: Database) {
   return async (req: Request, res: Response): Promise<void> => {
     const actor = currentUser(req);
@@ -141,6 +159,16 @@ function readOptionalInt(req: Request, key: string): number | undefined {
     throw badRequest(`${key} must be a positive integer.`);
   }
   return requireInt(Number(raw), key, { min: 1, max: Number.MAX_SAFE_INTEGER });
+}
+
+/** Optional teacher-name search (`search` query parameter), trimmed and capped. */
+function readOptionalSearch(req: Request): string | undefined {
+  const raw = req.query['search'];
+  if (raw === undefined) return undefined;
+  if (typeof raw !== 'string') throw badRequest('search must be a string.');
+  const search = raw.trim();
+  if (search.length > 100) throw badRequest('search must be at most 100 characters.');
+  return search || undefined;
 }
 
 function readOptionalStatus(req: Request): StaffOrderFilters['status'] {

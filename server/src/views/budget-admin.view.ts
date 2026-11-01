@@ -52,8 +52,11 @@ export function presentMonthlyBudgetRow(row: TeacherMonthlyBalanceRow) {
     allocated: presentMoney(row.allocated_paisa),
     adjusted: presentMoney(row.adjusted_paisa),
     carryForward: presentMoney(row.carry_forward_paisa),
+    // Gross debits of the month, the refunds that gave money back, and the
+    // net of the two. Remaining = allocated + adjusted + carry-forward - netSpent.
     spent: presentMoney(row.spent_paisa),
     refunded: presentMoney(row.refunded_paisa),
+    netSpent: presentMoney(row.spent_paisa - row.refunded_paisa),
     remaining: presentMoney(row.available_paisa),
   };
 }
@@ -81,8 +84,20 @@ export function presentMonthTransaction(row: MonthTransactionRow) {
   };
 }
 
-export function presentMonthTransactions(rows: MonthTransactionRow[]) {
-  return { data: rows.map(presentMonthTransaction) };
+/** One page of month transactions plus the totals for the whole result set. */
+export function presentMonthTransactionsPage(
+  rows: MonthTransactionRow[],
+  paging: { total: number; page: number; perPage: number; totalPaisa: number },
+) {
+  return {
+    data: rows.map(presentMonthTransaction),
+    meta: {
+      total: paging.total,
+      page: paging.page,
+      perPage: paging.perPage,
+      totalAmount: presentMoney(paging.totalPaisa),
+    },
+  };
 }
 
 export function presentBudgetHistory(history: BudgetHistory) {

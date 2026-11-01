@@ -3,11 +3,11 @@ import { notFound } from '../utils/errors.js';
 import * as reports from '../models/staff-report.model.js';
 import * as budgets from '../models/budget.model.js';
 
-export async function getDailyReport(db: Database, date: string) {
-  const totals = await reports.getDailyTotals(db, date);
+export async function getDailyReport(db: Database, date: string, locationId?: number) {
+  const totals = await reports.getDailyTotals(db, date, locationId);
   const grandTotal = totals.find((row) => row.is_total === 1);
   const locations = totals.filter((row) => row.location_id !== null);
-  const statusCounts = await reports.getDailyStatusCounts(db, date);
+  const statusCounts = await reports.getDailyStatusCounts(db, date, locationId);
   const count = (statuses: string[]) =>
     statusCounts
       .filter((row) => statuses.includes(row.status))
@@ -19,8 +19,11 @@ export async function getDailyReport(db: Database, date: string) {
     dailyTotalPaisa: grandTotal?.total_paisa ?? 0,
     statusSummary: {
       total: statusCounts.reduce((sum, row) => sum + row.count, 0),
-      pending: count(['PENDING']),
-      processing: count(['ACCEPTED', 'CONFIRMED', 'COLLECTED']),
+      // Pending = placed and awaiting collection; processing = collected but
+      // not yet delivered. Orders are created as CONFIRMED, so CONFIRMED must
+      // be counted as pending (PENDING/ACCEPTED are legacy statuses).
+      pending: count(['PENDING', 'ACCEPTED', 'CONFIRMED']),
+      processing: count(['COLLECTED']),
       delivered: count(['DELIVERED']),
       cancelled: count(['CANCELLED']),
       spendingOnDeliveredPaisa: delivered?.total_paisa ?? 0,

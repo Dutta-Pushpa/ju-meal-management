@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import type {
   ButtonHTMLAttributes,
   InputHTMLAttributes,
@@ -128,6 +129,40 @@ export function Alert({
           ×
         </button>
       )}
+    </div>
+  );
+}
+/** Centered confirmation dialog. Closes on Escape or a click on the backdrop. */
+export function Modal({
+  title,
+  children,
+  actions,
+  onClose,
+}: {
+  title: string;
+  children: ReactNode;
+  actions?: ReactNode;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+  return (
+    <div
+      className="modal-backdrop"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div className="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <h2 id="modal-title">{title}</h2>
+        <div className="modal-body">{children}</div>
+        {actions && <div className="modal-actions">{actions}</div>}
+      </div>
     </div>
   );
 }

@@ -28,6 +28,11 @@ function monthLabel(month: number): string {
   return MONTH_LABELS[Math.min(Math.max(month, 1), 12) - 1]!;
 }
 
+/** Last calendar day of a month (28-31), independent of the server time zone. */
+function lastDayOfMonth(year: number, month: number): number {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
 export function presentTeacherBudget(
   row: TeacherBudgetSummaryRow,
   year: number,
@@ -41,7 +46,7 @@ export function presentTeacherBudget(
       id: yearMonth,
       name: `${monthLabel(month)} ${year}`,
       startsOn: `${yearMonth}-01`,
-      endsOn: `${yearMonth}-31`,
+      endsOn: `${yearMonth}-${String(lastDayOfMonth(year, month)).padStart(2, '0')}`,
     },
     hasAllocation: row.has_allocation,
     allocated: money(row.allocated_paisa),

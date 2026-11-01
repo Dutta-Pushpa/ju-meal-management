@@ -6,7 +6,15 @@
 // includes carry-forward from previous months shown in red when it is
 // negative). Each row has an edit action to increase or decrease the budget.
 import { Fragment, useCallback, useEffect, useState, type FormEvent } from 'react';
-import { api, asMessage, currentDhakaMonth, hasPermission, money } from '../../api';
+import {
+  api,
+  apiPage,
+  asMessage,
+  currentDhakaMonth,
+  hasPermission,
+  money,
+  type PageMeta,
+} from '../../api';
 import type {
   BudgetRequest,
   LedgerEntry,
@@ -66,6 +74,7 @@ export function AdminBudget({ token, user }: { token: string; user: User }) {
   const [monthValue, setMonthValue] = useState(currentDhakaMonth());
   const [rows, setRows] = useState<MonthlyBudgetRow[]>([]);
   const [transactions, setTransactions] = useState<MonthTransaction[]>([]);
+  const [transactionMeta, setTransactionMeta] = useState<PageMeta>({ total: 0 });
   const [teachers, setTeachers] = useState<TeacherListItem[]>([]);
   const [transactionTeacher, setTransactionTeacher] = useState('');
   const [loading, setLoading] = useState(true);
@@ -121,19 +130,20 @@ export function AdminBudget({ token, user }: { token: string; user: User }) {
     if (!year || !month) return;
     setError('');
     try {
-      const [budgetRows, transactionRows] = await Promise.all([
+      const [budgetRows, transactionPage] = await Promise.all([
         canView
           ? api<MonthlyBudgetRow[]>(`/staff/budgets/monthly?year=${year}&month=${month}`, { token })
           : Promise.resolve([] as MonthlyBudgetRow[]),
         canView
-          ? api<MonthTransaction[]>(
+          ? apiPage<MonthTransaction[]>(
               `/staff/budgets/transactions?year=${year}&month=${month}${transactionTeacher ? `&teacherId=${transactionTeacher}` : ''}&perPage=100`,
               { token },
             )
-          : Promise.resolve([] as MonthTransaction[]),
+          : Promise.resolve({ data: [] as MonthTransaction[], meta: { total: 0 } as PageMeta }),
       ]);
       setRows(budgetRows);
-      setTransactions(transactionRows);
+      setTransactions(transactionPage.data);
+      setTransactionMeta(transactionPage.meta);
       if (!teachers.length) {
         setTeachers(
           budgetRows.map((row) => ({
@@ -285,6 +295,10 @@ export function AdminBudget({ token, user }: { token: string; user: User }) {
     0,
   );
   const totalRemaining = rows.reduce((sum, row) => sum + moneyCell(row.remaining.amountPaisa), 0);
+  const totalBase = rows.reduce((sum, row) => sum + moneyCell(row.allocated.amountPaisa), 0);
+  const totalAdjusted = rows.reduce((sum, row) => sum + moneyCell(row.adjusted.amountPaisa), 0);
+  const totalCarry = rows.reduce((sum, row) => sum + moneyCell(row.carryForward.amountPaisa), 0);
+  const totalNetSpent = rows.reduce((sum, row) => sum + moneyCell(row.netSpent.amountPaisa), 0);
   const negativeCount = rows.filter((row) => row.remaining.amountPaisa < 0).length;
 
   return (
@@ -367,9 +381,7 @@ export function AdminBudget({ token, user }: { token: string; user: User }) {
                         <strong
                           className={row.remaining.amountPaisa < 0 ? 'amount-negative' : ''}
                         >
-                          {row.remaining.amountPaisa < 0
-                            ? `−${money(Math.abs(row.remaining.amountPaisa))}`
-                            : money(row.remaining.amountPaisa)}
+                          {money(row.remaining.amountPaisa)}
                         </strong>
                       </span>
                       <span>
@@ -639,9 +651,10 @@ export function AdminBudget({ token, user }: { token: string; user: User }) {
                   <thead>
                     <tr>
                       <th>Teacher</th>
-                      <th>Allocated</th>
-                      <th>Carry-forward</th>
-                      <th>Spent</th>
+                      <th className="align-right">Base allocation</th>
+                      <th className="align-right">Adjustment</th>
+                      <th className="align-right">Carry-forward</th>
+                      <th className="align-right">Spent (net)</th>
                       <th className="align-right">Remaining</th>
                       {canAdjust && <th className="align-right">Actions</th>}
                     </tr>
@@ -656,37 +669,43 @@ export function AdminBudget({ token, user }: { token: string; user: User }) {
                             <strong>{row.teacher.fullName}</strong>
                             <small className="table-subtitle">{row.teacher.email}</small>
                           </td>
-                              <td>
-                                {moneyCell(row.allocated.amountPaisa) +
-                                  moneyCell(row.adjusted.amountPaisa) >
-                                0 ? (
-                                  <span>
-                                    {money(
-                                      moneyCell(row.allocated.amountPaisa) +
-                                        moneyCell(row.adjusted.amountPaisa),
-                                    )}
-                                  </span>
-                                ) : (
-                                  <span className="table-subtitle">Not allocated</span>
-                                )}
-                              </td>
-                              <td
-                                className={
-                                  row.carryForward.amountPaisa < 0 ? 'amount-negative' : ''
-                                }
-                              >
-                                {money(row.carryForward.amountPaisa)}
-                              </td>
-                              <td>{money(row.spent.amountPaisa)}</td>
+                          <td className="align-right">
+                            {row.hasAllocation ? (
+                              money(row.allocated.amountPaisa)
+                            ) : (
+                              <span className="table-subtitle">Not allocated</span>
+                            )}
+                          </td>
+                          <td
+                            className={`align-right ${
+                              row.adjusted.amountPaisa < 0 ? 'amount-negative' : ''
+                            }`}
+                          >
+                            {row.adjusted.amountPaisa === 0 ? '—' : money(row.adjusted.amountPaisa)}
+                          </td>
+                          <td
+                            className={`align-right ${
+                              row.carryForward.amountPaisa < 0 ? 'amount-negative' : ''
+                            }`}
+                          >
+                            {money(row.carryForward.amountPaisa)}
+                          </td>
+                          <td className="align-right">
+                            {money(row.netSpent.amountPaisa)}
+                            {row.refunded.amountPaisa > 0 && (
+                              <small className="table-subtitle">
+                                {money(row.spent.amountPaisa)} charged −{' '}
+                                {money(row.refunded.amountPaisa)} refunded
+                              </small>
+                            )}
+                          </td>
                               <td
                                 className={`align-right ${
                                   row.remaining.amountPaisa < 0 ? 'amount-negative' : ''
                                 }`}
                               >
                                 <strong>
-                                  {row.remaining.amountPaisa < 0
-                                    ? `−${money(Math.abs(row.remaining.amountPaisa))}`
-                                    : money(row.remaining.amountPaisa)}
+                                  {money(row.remaining.amountPaisa)}
                                 </strong>
                               </td>
                               {canAdjust && (
@@ -708,7 +727,7 @@ export function AdminBudget({ token, user }: { token: string; user: User }) {
                             </tr>
                             {editing ? (
                               <tr className="budget-edit-row">
-                                <td colSpan={canAdjust ? 6 : 5}>
+                                <td colSpan={canAdjust ? 7 : 6}>
                                   <form
                                     className="budget-edit-form"
                                     onSubmit={(e) => void saveEdit(e)}
@@ -757,19 +776,12 @@ export function AdminBudget({ token, user }: { token: string; user: User }) {
                   <tfoot>
                     <tr>
                       <th>Total</th>
-                      <th>{money(totalAllocated)}</th>
-                      <th
-                        className={
-                          rows.reduce((s, r) => s + moneyCell(r.carryForward.amountPaisa), 0) < 0
-                            ? 'amount-negative'
-                            : ''
-                        }
-                      >
-                        {money(
-                          rows.reduce((s, r) => s + moneyCell(r.carryForward.amountPaisa), 0),
-                        )}
+                      <th className="align-right">{money(totalBase)}</th>
+                      <th className="align-right">{money(totalAdjusted)}</th>
+                      <th className={`align-right ${totalCarry < 0 ? 'amount-negative' : ''}`}>
+                        {money(totalCarry)}
                       </th>
-                      <th>{money(rows.reduce((s, r) => s + moneyCell(r.spent.amountPaisa), 0))}</th>
+                      <th className="align-right">{money(totalNetSpent)}</th>
                       <th className="align-right">{money(totalRemaining)}</th>
                       {canAdjust && <th />}
                     </tr>
@@ -790,8 +802,11 @@ export function AdminBudget({ token, user }: { token: string; user: User }) {
                 <div>
                   <h2>Order records — {formatMonthLabel(year, month)}</h2>
                   <p>
-                    Every successfully completed meal order of this budget month, with date,
+                    Every successfully placed meal order of this budget month, with date,
                     amount and transaction id.
+                    {transactionMeta.total > transactions.length
+                      ? ` Showing the latest ${transactions.length} of ${transactionMeta.total}; the month total covers all of them.`
+                      : ''}
                   </p>
                 </div>
                 <div className="toolbar">
@@ -835,13 +850,19 @@ export function AdminBudget({ token, user }: { token: string; user: User }) {
                   </tbody>
                   <tfoot>
                     <tr>
-                      <th colSpan={3}>Month total</th>
+                      <th colSpan={3}>
+                        Month total
+                        {transactionMeta.total > transactions.length
+                          ? ` (all ${transactionMeta.total} orders)`
+                          : ''}
+                      </th>
                       <th className="align-right">
                         {money(
-                          transactions.reduce(
-                            (sum, txn) => sum + moneyCell(txn.amount.amountPaisa),
-                            0,
-                          ),
+                          transactionMeta.totalAmount?.amountPaisa ??
+                            transactions.reduce(
+                              (sum, txn) => sum + moneyCell(txn.amount.amountPaisa),
+                              0,
+                            ),
                         )}
                       </th>
                       <th />
