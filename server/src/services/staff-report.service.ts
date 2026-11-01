@@ -3,11 +3,11 @@ import { notFound } from '../utils/errors.js';
 import * as reports from '../models/staff-report.model.js';
 import * as budgets from '../models/budget.model.js';
 
-export async function getDailyReport(db: Database, date: string) {
-  const totals = await reports.getDailyTotals(db, date);
+export async function getDailyReport(db: Database, date: string, locationId?: number) {
+  const totals = await reports.getDailyTotals(db, date, locationId);
   const grandTotal = totals.find((row) => row.is_total === 1);
   const locations = totals.filter((row) => row.location_id !== null);
-  const statusCounts = await reports.getDailyStatusCounts(db, date);
+  const statusCounts = await reports.getDailyStatusCounts(db, date, locationId);
   const count = (statuses: string[]) =>
     statusCounts
       .filter((row) => statuses.includes(row.status))

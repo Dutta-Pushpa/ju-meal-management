@@ -103,6 +103,12 @@ export function todayInDhaka(): string {
   return `${values['year']}-${values['month']}-${values['day']}`;
 }
 
+/** Formats an ISO business date (YYYY-MM-DD) as dd/mm/yyyy. Other input is returned unchanged. */
+export function formatDhakaDate(isoDate: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : isoDate;
+}
+
 export function money(amountPaisa: number): string {
   const sign = amountPaisa < 0 ? '−' : '';
   const taka = (Math.abs(amountPaisa) / 100).toLocaleString('en-BD', {

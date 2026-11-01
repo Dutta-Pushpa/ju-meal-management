@@ -36,7 +36,10 @@ export function presentGroupedOrders(result: {
     itemSummary: Array<{ name: string; quantity: number }>;
     orders: Array<{
       id: number;
+      teacherId: number;
       teacherName: string;
+      status: string;
+      alternativeItemName: string | null;
       items: Array<{ name: string; quantity: number }>;
       totalPaisa: number;
     }>;
@@ -53,7 +56,10 @@ export function presentGroupedOrders(result: {
       itemSummary: group.itemSummary,
       orders: group.orders.map((order) => ({
         id: order.id,
+        teacherId: order.teacherId,
         teacherName: order.teacherName,
+        status: order.status,
+        alternativeItemName: order.alternativeItemName,
         items: order.items,
         total: money(order.totalPaisa),
       })),

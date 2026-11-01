@@ -17,7 +17,11 @@ export interface TeacherBudgetReportRow {
   available_paisa: number;
 }
 
-export async function getDailyTotals(db: Queryable, date: string): Promise<DailyLocationTotal[]> {
+export async function getDailyTotals(
+  db: Queryable,
+  date: string,
+  locationId?: number,
+): Promise<DailyLocationTotal[]> {
   const { rows } = await db.query<DailyLocationTotal>(
     `SELECT l.id AS location_id, l.name AS location_name,
             count(o.id)::int AS order_count,
@@ -26,9 +30,10 @@ export async function getDailyTotals(db: Queryable, date: string): Promise<Daily
        FROM orders o
        JOIN food_locations l ON l.id = o.food_location_id
       WHERE o.order_date = $1::date AND o.status <> 'CANCELLED'
+        AND ($2::bigint IS NULL OR o.food_location_id = $2)
       GROUP BY GROUPING SETS ((l.id, l.name), ())
       ORDER BY is_total, l.name NULLS LAST, l.id NULLS LAST`,
-    [date],
+    [date, locationId ?? null],
   );
   return rows;
 }
@@ -44,13 +49,15 @@ export interface DailyStatusCount {
 export async function getDailyStatusCounts(
   db: Queryable,
   date: string,
+  locationId?: number,
 ): Promise<DailyStatusCount[]> {
   const { rows } = await db.query<DailyStatusCount>(
     `SELECT status, count(*)::int AS count, COALESCE(sum(COALESCE(actual_cost_paisa, total_paisa)), 0)::bigint AS total_paisa
        FROM orders
       WHERE order_date = $1::date
+        AND ($2::bigint IS NULL OR food_location_id = $2)
       GROUP BY status`,
-    [date],
+    [date, locationId ?? null],
   );
   return rows;
 }

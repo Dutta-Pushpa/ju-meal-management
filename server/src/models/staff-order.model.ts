@@ -6,6 +6,14 @@ export interface StaffOrderFilters {
   locationId?: number | undefined;
   status?: 'CONFIRMED' | 'COLLECTED' | 'DELIVERED' | 'CANCELLED' | undefined;
   teacherId?: number | undefined;
+  /** Case-insensitive match on the teacher's name. */
+  search?: string | undefined;
+}
+
+/** Escapes LIKE wildcards so a search for "50%" matches literally. */
+function likePattern(search: string | undefined): string | null {
+  if (!search) return null;
+  return search.replace(/[\\%_]/g, '\\$&');
 }
 
 export interface StaffOrderRow {
@@ -126,12 +134,20 @@ export async function countStaffOrders(db: Queryable, filters: StaffOrderFilters
   const { rows } = await db.query<{ total: number }>(
     `SELECT count(*)::int AS total
        FROM orders o
+       JOIN users u ON u.id = o.teacher_id
       WHERE o.order_date = $1::date
         AND ($2::bigint IS NULL OR o.food_location_id = $2)
         AND ($3::text IS NOT NULL OR o.status <> 'CANCELLED')
         AND ($3::text IS NULL OR o.status = $3)
-        AND ($4::bigint IS NULL OR o.teacher_id = $4)`,
-    [filters.date, filters.locationId ?? null, filters.status ?? null, filters.teacherId ?? null],
+        AND ($4::bigint IS NULL OR o.teacher_id = $4)
+        AND ($5::text IS NULL OR u.full_name ILIKE ('%' || $5 || '%') ESCAPE '\\')`,
+    [
+      filters.date,
+      filters.locationId ?? null,
+      filters.status ?? null,
+      filters.teacherId ?? null,
+      likePattern(filters.search),
+    ],
   );
   return rows[0]!.total;
 }
@@ -156,6 +172,7 @@ export async function listStaffOrders(
         AND ($3::text IS NOT NULL OR o.status <> 'CANCELLED')
         AND ($3::text IS NULL OR o.status = $3)
         AND ($4::bigint IS NULL OR o.teacher_id = $4)
+        AND ($7::text IS NULL OR u.full_name ILIKE ('%' || $7 || '%') ESCAPE '\\')
       ORDER BY l.name, u.full_name, o.created_at, o.id
       LIMIT $5 OFFSET $6`,
     [
@@ -165,6 +182,7 @@ export async function listStaffOrders(
       filters.teacherId ?? null,
       pageSize,
       offset,
+      likePattern(filters.search),
     ],
   );
   return rows;
@@ -173,6 +191,7 @@ export async function listStaffOrders(
 export async function listAllStaffOrdersForDate(
   db: Queryable,
   date: string,
+  locationId?: number,
 ): Promise<StaffOrderRow[]> {
   const { rows } = await db.query<StaffOrderRow>(
     `SELECT o.id, o.teacher_id, u.full_name AS teacher_name,
@@ -184,10 +203,26 @@ export async function listAllStaffOrdersForDate(
        JOIN users u ON u.id = o.teacher_id
        JOIN food_locations l ON l.id = o.food_location_id
       WHERE o.order_date = $1::date AND o.status <> 'CANCELLED'
+        AND ($2::bigint IS NULL OR o.food_location_id = $2)
       ORDER BY l.name, u.full_name, o.created_at, o.id`,
-    [date],
+    [date, locationId ?? null],
   );
   return rows;
+}
+
+/** Ids of the orders of one date and location that are still waiting to be collected. */
+export async function listConfirmedOrderIds(
+  db: Queryable,
+  date: string,
+  locationId: number,
+): Promise<number[]> {
+  const { rows } = await db.query<{ id: number }>(
+    `SELECT id FROM orders
+      WHERE order_date = $1::date AND food_location_id = $2 AND status = 'CONFIRMED'
+      ORDER BY id`,
+    [date, locationId],
+  );
+  return rows.map((row) => row.id);
 }
 
 export async function findStaffOrderItems(

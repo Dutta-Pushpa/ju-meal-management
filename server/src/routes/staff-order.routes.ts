@@ -2,6 +2,7 @@ import { Router } from 'express';
 import type { Database } from '../db/pool.js';
 import type { AppConfig } from '../config/env.js';
 import {
+  bulkCollectStaffOrders,
   groupedStaffOrders,
   listStaffOrders,
   patchStaffOrderItemStatus,
@@ -15,6 +16,7 @@ export function createStaffOrderRouter(deps: { db: Database; config: AppConfig }
   const staff = requireRole('STAFF', 'ADMIN');
   router.get('/orders/grouped', auth, staff, groupedStaffOrders(deps.db));
   router.get('/orders', auth, staff, listStaffOrders(deps.db));
+  router.post('/orders/bulk-collect', auth, staff, bulkCollectStaffOrders(deps.db));
   router.patch('/orders/:id/status', auth, staff, patchStaffOrderStatus(deps));
   router.patch('/order-items/:id/status', auth, staff, patchStaffOrderItemStatus(deps.db));
   return router;

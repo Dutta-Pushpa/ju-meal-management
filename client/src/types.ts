@@ -122,12 +122,21 @@ export interface GroupedOrders {
     itemSummary: Array<{ name: string; quantity: number }>;
     orders: Array<{
       id: number;
+      teacherId: number;
       teacherName: string;
+      status: OrderStatus;
+      alternativeItemName: string | null;
       items: Array<{ name: string; quantity: number }>;
       total: Money;
     }>;
   }>;
   dailyTotal: Money;
+}
+/** Result of marking a location's confirmed orders as collected in one go. */
+export interface BulkCollectResult {
+  collected: number;
+  /** Ids that could not be updated, e.g. because someone else changed them first. */
+  failed: number[];
 }
 export interface DailyReport {
   date: string;

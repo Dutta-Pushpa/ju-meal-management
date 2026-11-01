@@ -24,8 +24,8 @@ export async function getStaffOrders(
   return { orders: rows.map((row) => ({ row, items: byOrder.get(row.id) ?? [] })), total };
 }
 
-export async function getGroupedStaffOrders(db: Database, date: string) {
-  const rows = await staffOrders.listAllStaffOrdersForDate(db, date);
+export async function getGroupedStaffOrders(db: Database, date: string, locationId?: number) {
+  const rows = await staffOrders.listAllStaffOrdersForDate(db, date, locationId);
   const items = await staffOrders.findStaffOrderItems(
     db,
     rows.map((row) => row.id),
@@ -44,7 +44,10 @@ export async function getGroupedStaffOrders(db: Database, date: string) {
       itemCounts: Map<string, number>;
       orders: Array<{
         id: number;
+        teacherId: number;
         teacherName: string;
+        status: staffOrders.StaffOrderRow['status'];
+        alternativeItemName: string | null;
         items: Array<{ name: string; quantity: number }>;
         totalPaisa: number;
       }>;
@@ -75,7 +78,10 @@ export async function getGroupedStaffOrders(db: Database, date: string) {
     }
     group.orders.push({
       id: row.id,
+      teacherId: row.teacher_id,
       teacherName: row.teacher_name,
+      status: row.status,
+      alternativeItemName: row.alternative_item_name,
       items: orderItems,
       totalPaisa: effectivePaisa,
     });
@@ -208,6 +214,35 @@ export async function changeOrderStatus(
     });
     return { oldStatus: order.status, status: input.status };
   });
+}
+
+/**
+ * Marks every CONFIRMED order of one date and location as collected. Each order
+ * is moved in its own transaction, so one failure never blocks the others; the
+ * ids that could not be updated (for example because someone else just changed
+ * them) are returned so the caller can report them.
+ */
+export async function bulkCollectOrders(
+  db: Database,
+  input: { date: string; locationId: number; actorId: number },
+) {
+  const ids = await staffOrders.listConfirmedOrderIds(db, input.date, input.locationId);
+  let collected = 0;
+  const failed: number[] = [];
+  for (const orderId of ids) {
+    try {
+      await changeOrderStatus(db, {
+        orderId,
+        status: 'COLLECTED',
+        actorId: input.actorId,
+        note: 'Collected by staff (bulk)',
+      });
+      collected += 1;
+    } catch {
+      failed.push(orderId);
+    }
+  }
+  return { collected, failed };
 }
 
 export async function changeOrderItemStatus(

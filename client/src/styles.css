@@ -529,6 +529,10 @@ select:focus-visible {
   gap: 16px;
   margin-bottom: 20px;
 }
+/* Six cards read best as a 3 x 2 block. Narrower breakpoints below override this. */
+.stat-grid-three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
 .stat-card {
   padding: 18px 19px;
   min-height: 132px;
@@ -2488,7 +2492,112 @@ tfoot th {
     display: block !important;
     width: 100%;
   }
-  body.printing-location-sheet .location-summary.print-location-target > .button {
+  body.printing-location-sheet .location-summary.print-location-target > .button,
+  body.printing-location-sheet .location-summary.print-location-target .location-summary-actions {
     display: none !important;
   }
+  body.printing-location-sheet .location-summary.print-location-target .sheet-heading {
+    display: block !important;
+    margin-bottom: 12px;
+  }
+  body.printing-location-sheet .location-summary.print-location-target .sheet-orders {
+    display: block !important;
+  }
+}
+
+/* ---- Dialog ---- */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(24, 24, 45, 0.45);
+}
+.modal {
+  display: grid;
+  gap: 12px;
+  width: 100%;
+  max-width: 460px;
+  padding: 22px;
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 20px 60px rgba(24, 24, 45, 0.25);
+}
+.modal h2 {
+  margin: 0;
+  font-size: 18px;
+}
+.modal-body {
+  display: grid;
+  gap: 10px;
+  color: #4b4c63;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+/* ---- Collection sheet and queue tools ---- */
+.sheet-heading {
+  display: none;
+}
+.sheet-heading span {
+  display: block;
+  color: #6b6c82;
+  font-size: 12px;
+}
+.sheet-orders {
+  display: none;
+  margin: 0 0 12px;
+  border-top: 1px dashed #e4e3ef;
+}
+.sheet-orders.is-open {
+  display: block;
+}
+.sheet-order-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid #f1f0f8;
+  font-size: 12px;
+}
+.sheet-order-row small {
+  display: block;
+  margin-top: 2px;
+  color: #6b6c82;
+  font-size: 11px;
+}
+.sheet-order-row > div:last-child {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.location-summary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.card-heading-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.queue-tools {
+  margin: 0 0 12px;
+}
+.load-more {
+  display: flex;
+  justify-content: center;
+  padding: 14px 0 4px;
 }

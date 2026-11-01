@@ -17,7 +17,7 @@ import { readYearMonth } from './budget-admin.controller.js';
 export function dailyReport(db: Database) {
   return async (req: Request, res: Response): Promise<void> => {
     const date = readBusinessDate(req.query['date']);
-    const result = await getDailyReport(db, date);
+    const result = await getDailyReport(db, date, readOptionalLocationId(req));
     res.status(200).json({ data: presentDailyReport(result) });
   };
 }
@@ -43,6 +43,16 @@ export function monthlyReport(db: Database) {
     const months = await getMonthlyTeacherReport(db, year, month);
     res.status(200).json({ data: presentMonthlyTeacherReport(months) });
   };
+}
+
+/** Optional `locationId` query parameter: narrows the report to one food location. */
+function readOptionalLocationId(req: Request): number | undefined {
+  const raw = req.query['locationId'];
+  if (raw === undefined) return undefined;
+  if (typeof raw !== 'string' || !/^\d+$/.test(raw)) {
+    throw badRequest('locationId must be a positive integer.');
+  }
+  return requireInt(Number(raw), 'locationId', { min: 1, max: Number.MAX_SAFE_INTEGER });
 }
 
 function readBusinessDate(value: unknown): string {
